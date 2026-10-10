@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with secret name and storage quota",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "emailOrPhone": { "type": "string", "maxLength": 120 },
+        "secretName": { "type": "string", "maxLength": 100 },
+        "passwordHash": { "type": "string", "maxLength": 128 },
+        "birthDate": { "type": "string", "maxLength": 30 },
+        "customLogo": { "type": "string" },
+        "totalStorageBytes": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "emailOrPhone", "secretName", "passwordHash"]
+    },
+    "File": {
+      "title": "File",
+      "description": "Cloud file metadata and storage reference",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 255 },
+        "size": { "type": "number" },
+        "type": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "enum": ["image", "video", "audio", "document", "archive", "code", "other"] },
+        "dataUrl": { "type": "string" },
+        "uploadedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "isStarred": { "type": "boolean" },
+        "isEncrypted": { "type": "boolean" },
+        "encryptionHint": { "type": "string" },
+        "inTrash": { "type": "boolean" },
+        "deletedAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["id", "name", "size", "type", "category", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Registered user accounts"
+    },
+    "/files/{fileId}": {
+      "schema": "File",
+      "description": "Storage files with user ownership"
+    }
+  }
+}

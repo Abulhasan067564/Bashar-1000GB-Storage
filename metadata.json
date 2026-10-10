@@ -1,0 +1,6 @@
+{
+  "name": "Bashar 1000GB Cloud Storage",
+  "description": "Secure 1000GB cloud storage drive with single and bulk upload, batch deletion, zip download, encrypted vault, 2FA, and secret name password recovery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
