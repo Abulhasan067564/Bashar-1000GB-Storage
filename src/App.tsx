@@ -5,7 +5,8 @@ import {
   StorageStats, 
   ActiveTab, 
   ViewMode, 
-  FileCategory 
+  FileCategory,
+  AdminCredentials 
 } from './types/storage';
 import { 
   getAllStoredFiles, 
@@ -20,7 +21,9 @@ import {
   deleteUserFromFirestore, 
   saveFileToFirestore, 
   deleteFileFromFirestore, 
-  testConnection 
+  testConnection,
+  saveAdminCredentialsToFirestore,
+  loadAdminCredentialsFromFirestore
 } from './services/firebase';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
 import { Navbar } from './components/Navbar';
@@ -29,6 +32,8 @@ import { ActionBar } from './components/ActionBar';
 import { FileCard } from './components/FileCard';
 import { FileListRow } from './components/FileListRow';
 import { AuthScreen } from './components/AuthScreen';
+import { AdminLogin } from './components/Admin/AdminLogin';
+import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { AuthModal } from './components/Modals/AuthModal';
 import { ProfileModal } from './components/Modals/ProfileModal';
 import { ShareModal } from './components/Modals/ShareModal';
@@ -41,11 +46,48 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
+const DEFAULT_ADMIN: AdminCredentials = {
+  username: 'admin',
+  passwordHash: 'admin123',
+  updatedAt: new Date().toISOString()
+};
+
 const STORAGE_USERS_KEY = 'bashar_1000gb_registered_users';
 const STORAGE_SESSION_KEY = 'bashar_1000gb_active_uid';
+const STORAGE_ADMIN_CREDS_KEY = 'bashar_1000gb_admin_creds';
+const STORAGE_ADMIN_SESSION_KEY = 'bashar_1000gb_admin_session';
 
 export default function App() {
   const [lang, setLang] = useState<'bn' | 'en'>('bn');
+
+  // Admin View State ('none' | 'login' | 'dashboard')
+  const [adminView, setAdminView] = useState<'none' | 'login' | 'dashboard'>('none');
+  
+  // Admin credentials (synced with Firestore and localStorage)
+  const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>(() => {
+    const saved = localStorage.getItem(STORAGE_ADMIN_CREDS_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return DEFAULT_ADMIN;
+      }
+    }
+    return DEFAULT_ADMIN;
+  });
+
+  // Current logged in admin session
+  const [currentAdmin, setCurrentAdmin] = useState<AdminCredentials | null>(() => {
+    const active = sessionStorage.getItem(STORAGE_ADMIN_SESSION_KEY);
+    if (active) {
+      try {
+        return JSON.parse(active);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   
   // Real registered users persistent in localStorage (NO DEMO USER)
   const [usersList, setUsersList] = useState<UserAccount[]>(() => {
@@ -101,11 +143,12 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Sync users with Firestore on boot
+  // Sync users and admin credentials with Firestore on boot
   useEffect(() => {
     async function initCloudDb() {
       await testConnection();
       try {
+        // Sync users
         const cloudUsers = await loadUsersFromFirestore();
         if (cloudUsers.length > 0) {
           setUsersList(prev => {
@@ -117,12 +160,93 @@ export default function App() {
             return merged;
           });
         }
+
+        // Sync admin credentials
+        const cloudAdmin = await loadAdminCredentialsFromFirestore();
+        if (cloudAdmin) {
+          setAdminCredentials(cloudAdmin);
+          localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(cloudAdmin));
+        } else {
+          // Initialize default admin in cloud if not yet created
+          saveAdminCredentialsToFirestore(DEFAULT_ADMIN).catch(() => {});
+        }
       } catch (err) {
         console.warn('Initial cloud sync notice:', err);
       }
     }
     initCloudDb();
   }, []);
+
+  // Admin login success
+  const handleAdminLoginSuccess = (admin: AdminCredentials) => {
+    setCurrentAdmin(admin);
+    sessionStorage.setItem(STORAGE_ADMIN_SESSION_KEY, JSON.stringify(admin));
+    setAdminView('dashboard');
+    showToast(lang === 'bn' ? 'অ্যাডমিন ড্যাশবোর্ডে স্বাগতম!' : 'Welcome to Admin Dashboard!');
+  };
+
+  // Admin logout
+  const handleAdminLogout = () => {
+    setCurrentAdmin(null);
+    sessionStorage.removeItem(STORAGE_ADMIN_SESSION_KEY);
+    setAdminView('none');
+    showToast(lang === 'bn' ? 'অ্যাডমিন লগআউট সম্পন্ন হয়েছে।' : 'Admin logged out.');
+  };
+
+  // Update admin credentials (change admin password)
+  const handleUpdateAdminCredentials = (newCreds: AdminCredentials) => {
+    setAdminCredentials(newCreds);
+    setCurrentAdmin(newCreds);
+    localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(newCreds));
+    sessionStorage.setItem(STORAGE_ADMIN_SESSION_KEY, JSON.stringify(newCreds));
+    saveAdminCredentialsToFirestore(newCreds).catch(() => {});
+    showToast(lang === 'bn' ? 'অ্যাডমিন পাসওয়ার্ড সফলভাবে সংরক্ষিত হয়েছে।' : 'Admin password updated.');
+  };
+
+  // Delete user by Admin
+  const handleDeleteUserByAdmin = async (userId: string) => {
+    try {
+      const allFiles = await getAllStoredFiles();
+      const userFileIds = allFiles.filter(f => f.ownerId === userId).map(f => f.id);
+      if (userFileIds.length > 0) {
+        await deleteMultipleStoredFiles(userFileIds);
+        userFileIds.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
+      }
+    } catch (err) {
+      console.error('Error removing user files:', err);
+    }
+
+    await deleteUserFromFirestore(userId);
+    const updated = usersList.filter(u => u.id !== userId);
+    setUsersList(updated);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updated));
+
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser(null);
+      localStorage.removeItem(STORAGE_SESSION_KEY);
+    }
+  };
+
+  // Refresh admin data
+  const handleRefreshAdminData = async () => {
+    try {
+      const cloudUsers = await loadUsersFromFirestore();
+      if (cloudUsers.length > 0) {
+        const map = new Map<string, UserAccount>();
+        cloudUsers.forEach(u => map.set(u.id, u));
+        const merged = Array.from(map.values());
+        setUsersList(merged);
+        localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(merged));
+      }
+      const cloudAdmin = await loadAdminCredentialsFromFirestore();
+      if (cloudAdmin) {
+        setAdminCredentials(cloudAdmin);
+        localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(cloudAdmin));
+      }
+    } catch (err) {
+      console.error('Error refreshing cloud data:', err);
+    }
+  };
 
   const handleUpdateUsersList = (updated: UserAccount[]) => {
     setUsersList(updated);
@@ -436,6 +560,45 @@ export default function App() {
     showToast(lang === 'bn' ? `${newFiles.length} টি ফাইল সফলভাবে আপলোড হয়েছে!` : `${newFiles.length} files uploaded successfully!`);
   };
 
+  // IF ADMIN VIEW ACTIVE:
+  if (adminView === 'login') {
+    return (
+      <AdminLogin
+        onLoginSuccess={handleAdminLoginSuccess}
+        onBackToApp={() => setAdminView('none')}
+        adminCredentials={adminCredentials}
+        lang={lang}
+      />
+    );
+  }
+
+  if (adminView === 'dashboard') {
+    if (!currentAdmin) {
+      return (
+        <AdminLogin
+          onLoginSuccess={handleAdminLoginSuccess}
+          onBackToApp={() => setAdminView('none')}
+          adminCredentials={adminCredentials}
+          lang={lang}
+        />
+      );
+    }
+
+    return (
+      <AdminDashboard
+        usersList={usersList}
+        adminCredentials={adminCredentials}
+        onUpdateUsersList={handleUpdateUsersList}
+        onUpdateAdminCredentials={handleUpdateAdminCredentials}
+        onDeleteUser={handleDeleteUserByAdmin}
+        onLogoutAdmin={handleAdminLogout}
+        onBackToApp={() => setAdminView('none')}
+        onRefreshData={handleRefreshAdminData}
+        lang={lang}
+      />
+    );
+  }
+
   // IF NOT LOGGED IN: SHOW MANDATORY AUTH GATEWAY (SIGN UP OR LOGIN FIRST)
   if (!currentUser) {
     return (
@@ -460,6 +623,7 @@ export default function App() {
           onUpdateUsersList={handleUpdateUsersList}
           lang={lang}
           onToggleLang={() => setLang(prev => prev === 'bn' ? 'en' : 'bn')}
+          onOpenAdminLogin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
         />
       </>
     );
@@ -494,6 +658,7 @@ export default function App() {
         stats={stats}
         lang={lang}
         onToggleLang={() => setLang(prev => prev === 'bn' ? 'en' : 'bn')}
+        onOpenAdmin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
       />
 
       {/* Body Layout: Sidebar + Main File Manager */}

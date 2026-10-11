@@ -15,7 +15,8 @@ import {
   EyeOff,
   Calendar,
   Camera,
-  Trash2
+  Trash2,
+  ShieldCheck
 } from 'lucide-react';
 
 interface AuthScreenProps {
@@ -24,6 +25,7 @@ interface AuthScreenProps {
   onUpdateUsersList: (users: UserAccount[]) => void;
   lang: 'bn' | 'en';
   onToggleLang: () => void;
+  onOpenAdminLogin?: () => void;
 }
 
 const PRESET_LOGOS = [
@@ -38,7 +40,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   onLoginSuccess,
   onUpdateUsersList,
   lang,
-  onToggleLang
+  onToggleLang,
+  onOpenAdminLogin
 }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('signup');
   const [emailOrPhone, setEmailOrPhone] = useState('');
@@ -89,6 +92,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
+    if (user.status === 'disabled') {
+      setError(
+        lang === 'bn'
+          ? 'আপনার অ্যাকাউন্টটি প্রশাসক দ্বারা সাময়িকভাবে নিষ্ক্রিয় করা হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
+          : 'Your account has been disabled by the administrator. Please contact admin.'
+      );
+      return;
+    }
+
     if (user.passwordHash !== password) {
       setError(lang === 'bn' ? 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন।' : 'Incorrect password!');
       return;
@@ -127,6 +139,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       birthDate: birthDate.trim() || undefined,
       customLogo: customLogo.trim() || undefined,
       totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
+      status: 'active',
+      role: 'user',
       createdAt: new Date().toISOString()
     };
 
@@ -200,6 +214,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenAdminLogin && (
+            <button
+              onClick={onOpenAdminLogin}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 text-rose-300 hover:text-white text-xs font-bold border border-rose-800/80 transition cursor-pointer shadow-sm shadow-rose-950"
+              title={lang === 'bn' ? 'অ্যাডমিন প্যানেল লগইন' : 'Admin Portal Login'}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
+              <span>{lang === 'bn' ? 'অ্যাডমিন লগইন' : 'Admin Login'}</span>
+            </button>
+          )}
+
           <button
             onClick={onToggleLang}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800 transition"
@@ -600,8 +625,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-3 text-center text-xs text-slate-500 border-t border-slate-800/40">
-        Bashar 1000GB Cloud Storage • 1000 GB High Security Vault
+      <footer className="relative z-10 py-3.5 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-800/40 bg-slate-950/60">
+        <div>
+          Bashar 1000GB Cloud Storage • 1000 GB High Security Vault
+        </div>
+        {onOpenAdminLogin && (
+          <button
+            onClick={onOpenAdminLogin}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-rose-400 transition text-[11px] font-medium cursor-pointer"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-rose-500" />
+            <span>{lang === 'bn' ? 'অ্যাডমিন সিকিউরিটি প্যানেল' : 'Admin Security Console'}</span>
+          </button>
+        )}
       </footer>
     </div>
   );

@@ -12,7 +12,7 @@ import {
   where,
   getDocFromServer
 } from 'firebase/firestore';
-import { UserAccount, StorageFile } from '../types/storage';
+import { UserAccount, StorageFile, AdminCredentials } from '../types/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -77,7 +77,10 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
       birthDate: user.birthDate || '',
       customLogo: user.customLogo || '',
       totalStorageBytes: user.totalStorageBytes,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
+      status: user.status || 'active',
+      role: user.role || 'user',
+      lastLoginAt: user.lastLoginAt || ''
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -162,3 +165,29 @@ export async function loadUserFilesFromFirestore(userId: string): Promise<Storag
     return [];
   }
 }
+
+// Save or update admin credentials to Firestore
+export async function saveAdminCredentialsToFirestore(creds: AdminCredentials): Promise<void> {
+  const path = 'admin_config/credentials';
+  try {
+    await setDoc(doc(db, 'admin_config', 'credentials'), creds);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Load admin credentials from Firestore
+export async function loadAdminCredentialsFromFirestore(): Promise<AdminCredentials | null> {
+  const path = 'admin_config/credentials';
+  try {
+    const snap = await getDoc(doc(db, 'admin_config', 'credentials'));
+    if (snap.exists()) {
+      return snap.data() as AdminCredentials;
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+}
+

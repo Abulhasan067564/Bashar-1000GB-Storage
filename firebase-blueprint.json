@@ -13,9 +13,22 @@
         "birthDate": { "type": "string", "maxLength": 30 },
         "customLogo": { "type": "string" },
         "totalStorageBytes": { "type": "number" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "disabled"] },
+        "role": { "type": "string", "enum": ["user", "admin"] }
       },
       "required": ["id", "name", "emailOrPhone", "secretName", "passwordHash"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Secure admin configuration and credentials",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["username", "passwordHash"]
     },
     "File": {
       "title": "File",
@@ -48,6 +61,10 @@
     "/files/{fileId}": {
       "schema": "File",
       "description": "Storage files with user ownership"
+    },
+    "/admin_config/{docId}": {
+      "schema": "AdminConfig",
+      "description": "Admin security credentials"
     }
   }
 }

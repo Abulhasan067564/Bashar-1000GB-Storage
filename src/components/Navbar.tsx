@@ -13,6 +13,7 @@ interface NavbarProps {
   stats: StorageStats;
   lang: 'bn' | 'en';
   onToggleLang: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -25,7 +26,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSearchChange,
   stats,
   lang,
-  onToggleLang
+  onToggleLang,
+  onOpenAdmin
 }) => {
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 MB';
@@ -99,6 +101,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               {lang === 'bn' ? 'ফাইল আপলোড' : 'Upload File'}
             </span>
           </button>
+
+          {/* Admin Panel Button */}
+          {onOpenAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 border border-rose-800/80 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer"
+              title={lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
+            >
+              <ShieldCheck className="w-4 h-4 text-rose-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'অ্যাডমিন' : 'Admin'}</span>
+            </button>
+          )}
 
           {/* Language Switcher */}
           <button

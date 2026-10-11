@@ -40,6 +40,15 @@ export interface UserAccount {
   totalStorageBytes: number; // Default 1,000 GB
   avatar?: string;
   createdAt: string;
+  status?: 'active' | 'disabled'; // একাউন্ট সক্রিয় নাকি নিষ্ক্রিয়
+  role?: 'user' | 'admin';
+  lastLoginAt?: string;
+}
+
+export interface AdminCredentials {
+  username: string;
+  passwordHash: string;
+  updatedAt?: string;
 }
 
 export interface StorageStats {
