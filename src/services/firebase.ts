@@ -113,12 +113,13 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
   }
 }
 
-// Save or update file metadata to Firestore
+// Save or update file metadata & content to Firestore
 export async function saveFileToFirestore(file: StorageFile): Promise<void> {
   const path = `files/${file.id}`;
   try {
-    // Note: Store metadata and link (avoid large base64 direct in 1MB doc limit)
-    const filePayload = {
+    // Note: Store metadata and payload. If file data fits inside doc limit (< 850KB),
+    // save dataUrl directly so files, passwords, notes, and photos sync across all devices & browsers.
+    const filePayload: Record<string, any> = {
       id: file.id,
       name: file.name,
       size: file.size,
@@ -133,6 +134,15 @@ export async function saveFileToFirestore(file: StorageFile): Promise<void> {
       ownerId: file.ownerId,
       shared: file.shared || { isShared: false }
     };
+    if (file.tags) {
+      filePayload.tags = file.tags;
+    }
+    if (file.deletedAt) {
+      filePayload.deletedAt = file.deletedAt;
+    }
+    if (file.dataUrl && file.dataUrl.length < 850000) {
+      filePayload.dataUrl = file.dataUrl;
+    }
     await setDoc(doc(db, 'files', file.id), filePayload);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);

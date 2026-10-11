@@ -21,6 +21,7 @@ import {
   deleteUserFromFirestore, 
   saveFileToFirestore, 
   deleteFileFromFirestore, 
+  loadUserFilesFromFirestore,
   testConnection,
   saveAdminCredentialsToFirestore,
   loadAdminCredentialsFromFirestore
@@ -136,6 +137,7 @@ export default function App() {
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
+  const [isSyncingFiles, setIsSyncingFiles] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -257,11 +259,87 @@ export default function App() {
     });
   };
 
-  const handleLoginSuccess = (user: UserAccount) => {
+  // Seamless cross-browser and cross-device sync between local IndexedDB and Firestore Cloud
+  const syncUserFiles = async (userId: string, isManual = false) => {
+    setIsSyncingFiles(true);
+    try {
+      // 1. Fetch locally cached files
+      const localStored = await getAllStoredFiles();
+      const userLocals = localStored.filter(f => f.ownerId === userId);
+      const fileMap = new Map<string, StorageFile>();
+      userLocals.forEach(f => fileMap.set(f.id, f));
+
+      // 2. Fetch cloud files from Firestore
+      const cloudFiles = await loadUserFilesFromFirestore(userId);
+
+      let hasNewCloudFiles = false;
+      const filesToPushToCloud: StorageFile[] = [];
+
+      // Check files from cloud
+      cloudFiles.forEach(cf => {
+        const local = fileMap.get(cf.id);
+        if (!local) {
+          // File uploaded from another browser/computer/phone!
+          fileMap.set(cf.id, cf);
+          hasNewCloudFiles = true;
+        } else {
+          // If local has no dataUrl or cloud has newer dataUrl
+          if (!local.dataUrl && cf.dataUrl) {
+            fileMap.set(cf.id, { ...local, dataUrl: cf.dataUrl });
+            hasNewCloudFiles = true;
+          }
+          if (new Date(cf.updatedAt).getTime() > new Date(local.updatedAt).getTime()) {
+            fileMap.set(cf.id, { ...cf, dataUrl: cf.dataUrl || local.dataUrl });
+            hasNewCloudFiles = true;
+          }
+        }
+      });
+
+      // If local files are not yet in Firestore or cloud doc was missing dataUrl
+      userLocals.forEach(lf => {
+        const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
+        if (!cloudMatch || (!cloudMatch.dataUrl && lf.dataUrl && lf.dataUrl.length < 850000)) {
+          filesToPushToCloud.push(lf);
+        }
+      });
+
+      const mergedFiles = Array.from(fileMap.values());
+      // Sort newest first
+      mergedFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      setFiles(mergedFiles);
+
+      // Cache newly retrieved cloud files into this browser's IndexedDB
+      if (hasNewCloudFiles) {
+        await saveMultipleStoredFiles(mergedFiles);
+      }
+
+      // Back up local files to cloud
+      if (filesToPushToCloud.length > 0) {
+        for (const fileToPush of filesToPushToCloud) {
+          saveFileToFirestore(fileToPush).catch(() => {});
+        }
+      }
+
+      if (isManual) {
+        showToast(
+          lang === 'bn'
+            ? 'ক্লাউডের সাথে সকল ফাইল সফলভাবে সিঙ্ক হয়েছে!'
+            : 'All files synced with cloud successfully!'
+        );
+      }
+    } catch (err) {
+      console.warn('Cross-browser file sync notice:', err);
+    } finally {
+      setIsSyncingFiles(false);
+    }
+  };
+
+  const handleLoginSuccess = async (user: UserAccount) => {
     setCurrentUser(user);
     localStorage.setItem(STORAGE_SESSION_KEY, user.id);
     saveUserToFirestore(user).catch(() => {});
-    showToast(lang === 'bn' ? `স্বাগতম, ${user.name}!` : `Welcome, ${user.name}!`);
+    showToast(lang === 'bn' ? `স্বাগতম, ${user.name}! ক্লাউড ফাইল লোড হচ্ছে...` : `Welcome, ${user.name}! Loading files...`);
+    await syncUserFiles(user.id);
   };
 
   const handleLogout = () => {
@@ -308,7 +386,7 @@ export default function App() {
     );
   };
 
-  // Load user files from IndexedDB strictly belonging to currentUser
+  // Load user files from IndexedDB and Firestore across all browsers/devices
   useEffect(() => {
     async function loadData() {
       if (!currentUser) {
@@ -317,13 +395,16 @@ export default function App() {
       }
       try {
         const stored = await getAllStoredFiles();
-        // Strict user isolation - only show files owned by current user
+        // Fast local render if available
         const userFiles = stored.filter(f => f.ownerId === currentUser.id);
-        setFiles(userFiles);
+        if (userFiles.length > 0) {
+          setFiles(userFiles);
+        }
       } catch (err) {
-        console.error('Failed to load files from IndexedDB:', err);
-        setFiles([]);
+        console.error('Local IndexedDB load notice:', err);
       }
+      // Cross-browser cloud sync
+      await syncUserFiles(currentUser.id);
     }
     loadData();
   }, [currentUser?.id]);
@@ -659,6 +740,8 @@ export default function App() {
         lang={lang}
         onToggleLang={() => setLang(prev => prev === 'bn' ? 'en' : 'bn')}
         onOpenAdmin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
+        onSyncFiles={() => currentUser && syncUserFiles(currentUser.id, true)}
+        isSyncingFiles={isSyncingFiles}
       />
 
       {/* Body Layout: Sidebar + Main File Manager */}

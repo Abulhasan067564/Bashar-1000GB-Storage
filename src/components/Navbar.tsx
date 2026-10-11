@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAccount, StorageStats } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles } from 'lucide-react';
+import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -14,6 +14,8 @@ interface NavbarProps {
   lang: 'bn' | 'en';
   onToggleLang: () => void;
   onOpenAdmin?: () => void;
+  onSyncFiles?: () => void;
+  isSyncingFiles?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -27,7 +29,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   stats,
   lang,
   onToggleLang,
-  onOpenAdmin
+  onOpenAdmin,
+  onSyncFiles,
+  isSyncingFiles = false
 }) => {
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 MB';
@@ -111,6 +115,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <ShieldCheck className="w-4 h-4 text-rose-400" />
               <span className="hidden md:inline">{lang === 'bn' ? 'অ্যাডমিন' : 'Admin'}</span>
+            </button>
+          )}
+
+          {/* Cloud Sync Button */}
+          {currentUser && onSyncFiles && (
+            <button
+              onClick={onSyncFiles}
+              disabled={isSyncingFiles}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer ${isSyncingFiles ? 'border-cyan-400 ring-1 ring-cyan-400/50' : ''}`}
+              title={lang === 'bn' ? 'ক্লাউড সিঙ্ক (সব ব্রাউজার ও ডিভাইসের ফাইল সিঙ্ক করুন)' : 'Sync files with Cloud'}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFiles ? 'animate-spin text-cyan-300' : 'text-cyan-400'}`} />
+              <span className="hidden sm:inline">
+                {lang === 'bn' ? (isSyncingFiles ? 'সিঙ্ক...' : 'সিঙ্ক') : (isSyncingFiles ? 'Syncing...' : 'Sync')}
+              </span>
             </button>
           )}
 
