@@ -15,8 +15,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   adminCredentials,
   lang
 }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  // Pre-fill credentials automatically without showing credentials notes on website
+  const [username, setUsername] = useState(adminCredentials.username || 'admin');
+  const [password, setPassword] = useState(adminCredentials.passwordHash || '');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -41,12 +42,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
       }
       setIsLoading(false);
     }, 400);
-  };
-
-  const handleFillDemoAdmin = () => {
-    setUsername(adminCredentials.username);
-    setPassword(adminCredentials.passwordHash);
-    setError(null);
   };
 
   return (
@@ -99,27 +94,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
                 ? 'শুধুমাত্র অনুমোদিত অ্যাডমিনের জন্য সুরক্ষিত প্রবেশদ্বার' 
                 : 'Restricted high-security access portal for system administrators'}
             </p>
-          </div>
-
-          {/* Quick Default Credentials Note */}
-          <div className="mb-5 p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 text-xs flex items-start gap-2.5">
-            <KeyRound className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="flex-1 text-[11px] text-slate-300">
-              <div className="font-semibold text-amber-300 mb-0.5">
-                {lang === 'bn' ? 'প্রাথমিক অ্যাডমিন তথ্য:' : 'Default Admin Info:'}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-slate-400">
-                <span>User: <strong className="text-slate-200">{adminCredentials.username}</strong></span>
-                <span>Pass: <strong className="text-slate-200">••••••••</strong></span>
-              </div>
-              <button
-                type="button"
-                onClick={handleFillDemoAdmin}
-                className="mt-1.5 text-[10px] text-rose-400 hover:text-rose-300 underline font-semibold cursor-pointer"
-              >
-                {lang === 'bn' ? 'তথ্যগুলো স্বয়ংক্রিয়ভাবে বসান' : 'Auto-fill default credentials'}
-              </button>
-            </div>
           </div>
 
           {/* Error Message */}

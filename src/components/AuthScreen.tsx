@@ -1,6 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { UserAccount } from '../types/storage';
 import { 
+  isSameEmailOrPhone, 
+  isEmail, 
+  isPhoneNumber, 
+  getNormalizedAccountIdentifier 
+} from '../utils/accountValidation';
+import { 
   Cloud, 
   User, 
   KeyRound, 
@@ -79,15 +85,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     e.preventDefault();
     setError(null);
 
-    const user = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
-    );
+    const inputClean = emailOrPhone.trim();
+    if (!inputClean) {
+      setError(lang === 'bn' ? 'অনুগ্রহ করে ইমেইল বা ফোন নম্বর দিন।' : 'Please enter email or phone.');
+      return;
+    }
+
+    const user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
 
     if (!user) {
       setError(
         lang === 'bn' 
-          ? 'এই ইমেইল বা ফোন নম্বরের কোনো একাউন্ট নেই। প্রথমে সাইন আপ করুন।' 
-          : 'No account found with this email or phone. Please sign up first.'
+          ? 'এই ইমেইল বা মোবাইল নম্বরের কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে সঠিক তথ্য দিন অথবা নতুন অ্যাকাউন্ট খুলুন।' 
+          : 'No account found with this email or phone. Please check or sign up.'
       );
       return;
     }
@@ -113,27 +123,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     e.preventDefault();
     setError(null);
 
-    if (!emailOrPhone.trim() || !password.trim() || !secretName.trim()) {
+    const inputClean = emailOrPhone.trim();
+
+    if (!inputClean || !password.trim() || !secretName.trim()) {
       setError(lang === 'bn' ? 'অনুগ্রহ করে সকল প্রয়োজনীয় তথ্য পূরণ করুন।' : 'Please fill all required fields.');
       return;
     }
 
-    const existing = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
-    );
-    if (existing) {
+    // Identify if valid email or valid phone
+    const isInputEmail = isEmail(inputClean);
+    const isInputPhone = isPhoneNumber(inputClean);
+
+    if (!isInputEmail && !isInputPhone) {
       setError(
-        lang === 'bn' 
-          ? 'এই ইমেইল বা মোবাইল নম্বরটি ইতিমধ্যে নিবন্ধিত! লগইন করার চেষ্টা করুন।' 
-          : 'This email or phone is already registered! Please login.'
+        lang === 'bn'
+          ? 'অনুগ্রহ করে সঠিক ইমেইল ঠিকানা (যেমন user@gmail.com) অথবা সঠিক মোবাইল নম্বর (যেমন 017xxxxxxxx) লিখুন।'
+          : 'Please enter a valid email address (e.g. user@gmail.com) or a valid mobile number (e.g. 017xxxxxxxx).'
       );
+      return;
+    }
+
+    // STRICT CHECK: Ensure same email or same phone cannot be registered more than once
+    const existing = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+    if (existing) {
+      if (isInputEmail) {
+        setError(
+          lang === 'bn' 
+            ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই ইমেইল দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
+            : 'This email address is already registered! Multiple accounts cannot be created with the same email. Please sign in.'
+        );
+      } else {
+        setError(
+          lang === 'bn' 
+            ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই নম্বর দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
+            : 'This phone number is already registered! Multiple accounts cannot be created with the same number. Please sign in.'
+        );
+      }
       return;
     }
 
     const newUser: UserAccount = {
       id: 'user-' + Date.now(),
       name: name.trim() || (lang === 'bn' ? 'ব্যবহারকারী' : 'User'),
-      emailOrPhone: emailOrPhone.trim(),
+      emailOrPhone: inputClean,
       secretName: secretName.trim().toLowerCase(),
       passwordHash: password,
       birthDate: birthDate.trim() || undefined,
@@ -153,9 +185,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     e.preventDefault();
     setError(null);
 
-    const user = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
-    );
+    const inputClean = emailOrPhone.trim();
+    const user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
 
     if (!user) {
       setError(lang === 'bn' ? 'এই একাউন্টটি খুঁজে পাওয়া যায়নি।' : 'Account not found.');
@@ -429,6 +460,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   placeholder="01712345678 বা user@gmail.com"
                   className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
                 />
+                <p className="text-[10px] text-cyan-400/80 mt-1">
+                  {lang === 'bn' 
+                    ? '🔒 একই মোবাইল নম্বর বা ইমেইল দিয়ে শুধুমাত্র একটি অ্যাকাউন্ট খোলা যাবে।' 
+                    : '🔒 Only one account can be registered per email or mobile number.'}
+                </p>
               </div>
 
               {/* PASSWORD */}
