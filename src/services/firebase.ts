@@ -10,7 +10,8 @@ import {
   deleteDoc, 
   query, 
   where,
-  getDocFromServer
+  getDocFromServer,
+  writeBatch
 } from 'firebase/firestore';
 import { UserAccount, StorageFile, AdminCredentials } from '../types/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -150,6 +151,48 @@ export async function saveFileToFirestore(file: StorageFile): Promise<void> {
       filePayload.dataUrl = file.dataUrl;
     }
     await setDoc(doc(db, 'files', file.id), filePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Fast batch save multiple files to Firestore in a single network round-trip
+export async function saveMultipleFilesToFirestore(files: StorageFile[]): Promise<void> {
+  if (files.length === 0) return;
+  const path = 'files/batch';
+  try {
+    // Firestore supports up to 500 operations per batch
+    const BATCH_LIMIT = 450;
+    for (let i = 0; i < files.length; i += BATCH_LIMIT) {
+      const slice = files.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      for (const file of slice) {
+        const filePayload: Record<string, any> = {
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          category: file.category,
+          uploadedAt: file.uploadedAt,
+          updatedAt: file.updatedAt,
+          isStarred: file.isStarred,
+          isEncrypted: file.isEncrypted,
+          encryptionHint: file.encryptionHint || '',
+          inTrash: file.inTrash,
+          ownerId: file.ownerId,
+          shared: file.shared || { isShared: false }
+        };
+        if (file.tags) filePayload.tags = file.tags;
+        if (file.deletedAt) filePayload.deletedAt = file.deletedAt;
+        if (file.folderId !== undefined) filePayload.folderId = file.folderId;
+        if (file.isFolder !== undefined) filePayload.isFolder = file.isFolder;
+        if (file.dataUrl && file.dataUrl.length < 850000) {
+          filePayload.dataUrl = file.dataUrl;
+        }
+        batch.set(doc(db, 'files', file.id), filePayload);
+      }
+      await batch.commit();
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

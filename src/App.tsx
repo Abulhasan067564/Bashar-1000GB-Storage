@@ -14,13 +14,15 @@ import {
   saveStoredFile, 
   saveMultipleStoredFiles, 
   deleteStoredFile, 
-  deleteMultipleStoredFiles 
+  deleteMultipleStoredFiles,
+  detectFileCategory
 } from './services/indexedDbStorage';
 import { 
   saveUserToFirestore, 
   loadUsersFromFirestore, 
   deleteUserFromFirestore, 
   saveFileToFirestore, 
+  saveMultipleFilesToFirestore,
   deleteFileFromFirestore, 
   loadUserFilesFromFirestore,
   testConnection,
@@ -49,7 +51,8 @@ import {
   Cloud, 
   Upload, 
   AlertCircle, 
-  CheckCircle2
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 
 const DEFAULT_ADMIN: AdminCredentials = {
@@ -154,6 +157,7 @@ export default function App() {
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
   const [isSyncingFiles, setIsSyncingFiles] = useState(false);
+  const [isDragOverWindow, setIsDragOverWindow] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -838,15 +842,85 @@ export default function App() {
     }
   };
 
-  // Files Uploaded callback (Optimized for ultra-fast response)
+  // Files Uploaded callback (Optimized for ultra-fast turbo response)
   const handleFilesUploaded = async (newFiles: StorageFile[]) => {
     // 1. Instant optimistic state update: files appear immediately in UI without waiting
     setFiles(prev => [...newFiles, ...prev]);
-    showToast(lang === 'bn' ? `${newFiles.length} টি ফাইল দ্রুত সফলভাবে আপলোড হয়েছে!` : `${newFiles.length} files uploaded quickly!`);
+    showToast(
+      lang === 'bn' 
+        ? `⚡ ${newFiles.length} টি ফাইল টার্বো স্পিডে সফলভাবে আপলোড হয়েছে!` 
+        : `⚡ ${newFiles.length} files uploaded at turbo speed!`
+    );
 
-    // 2. High-speed background persistence to IndexedDB and Firestore
+    // 2. High-speed parallel persistence to IndexedDB and single-request batch to Firestore
     saveMultipleStoredFiles(newFiles).catch(err => console.error('IndexedDB error:', err));
-    Promise.all(newFiles.map(f => saveFileToFirestore(f).catch(() => {}))).catch(() => {});
+    saveMultipleFilesToFirestore(newFiles).catch(err => console.error('Firestore batch error:', err));
+  };
+
+  // Direct Drag & Drop upload handler (Upload directly into current folder without opening modal)
+  const handleDirectDropFiles = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOverWindow(false);
+    if (!currentUser) return;
+    const droppedFiles = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (droppedFiles.length === 0) return;
+
+    showToast(lang === 'bn' ? '⚡ টার্বো স্পিডে ফাইল প্রসেস হচ্ছে...' : '⚡ Processing at turbo speed...', 'info');
+
+    try {
+      const readSingle = (file: File, idx: number): Promise<StorageFile> => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const category = detectFileCategory(file.name, file.type);
+            resolve({
+              id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
+              name: file.name,
+              size: file.size,
+              type: file.type || 'application/octet-stream',
+              category,
+              dataUrl,
+              uploadedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              isStarred: false,
+              isEncrypted: false,
+              inTrash: false,
+              ownerId: currentUser.id,
+              folderId: currentFolderId || null,
+              shared: { isShared: false }
+            });
+          };
+          reader.onerror = () => {
+            const category = detectFileCategory(file.name, file.type);
+            resolve({
+              id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
+              name: file.name,
+              size: file.size,
+              type: file.type || 'application/octet-stream',
+              category,
+              dataUrl: '',
+              uploadedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              isStarred: false,
+              isEncrypted: false,
+              inTrash: false,
+              ownerId: currentUser.id,
+              folderId: currentFolderId || null,
+              shared: { isShared: false }
+            });
+          };
+          reader.readAsDataURL(file);
+        });
+      };
+
+      const results = await Promise.all(droppedFiles.map((f, i) => readSingle(f, i)));
+      handleFilesUploaded(results);
+    } catch (err) {
+      console.error(err);
+      showToast(lang === 'bn' ? 'আপলোডে সমস্যা হয়েছে।' : 'Upload failed.', 'error');
+    }
   };
 
   // IF ADMIN VIEW ACTIVE:
@@ -969,8 +1043,35 @@ export default function App() {
           lang={lang}
         />
 
-        {/* Center / Right Content Area */}
-        <main className="flex-1 flex flex-col min-w-0 bg-slate-950/50 overflow-y-auto">
+        {/* Center / Right Content Area with Global Turbo Drag & Drop */}
+        <main 
+          onDragOver={(e) => { e.preventDefault(); setIsDragOverWindow(true); }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setIsDragOverWindow(false);
+          }}
+          onDrop={handleDirectDropFiles}
+          className="flex-1 flex flex-col min-w-0 bg-slate-950/50 overflow-y-auto relative"
+        >
+          {/* Turbo Drag & Drop Overlay */}
+          {isDragOverWindow && (
+            <div className="absolute inset-0 z-40 bg-cyan-950/85 backdrop-blur-md border-4 border-dashed border-cyan-400 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center mb-3 animate-bounce shadow-lg shadow-cyan-500/30">
+                <Zap className="w-9 h-9 fill-cyan-400 text-cyan-300" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-1">
+                {lang === 'bn' ? '⚡ ফাইলটি এখানে ড্রপ করুন' : '⚡ Drop Files Here'}
+              </h3>
+              <p className="text-sm text-cyan-200 max-w-md font-medium">
+                {lang === 'bn' 
+                  ? (currentFolder 
+                      ? `"${currentFolder.name}" ফোল্ডারে টার্বো স্পিডে সরাসরি আপলোড হয়ে যাবে` 
+                      : '১০০০ জিবি ক্লাউড ড্রাইভে টার্বো স্পিডে সরাসরি আপলোড হয়ে যাবে')
+                  : 'Files will instantly upload with turbo speed into your drive'}
+              </p>
+            </div>
+          )}
+
           {/* Action Bar (Batch select, batch download all, batch delete all, filters, folder nav, copy/move) */}
           <ActionBar
             activeTab={activeTab}

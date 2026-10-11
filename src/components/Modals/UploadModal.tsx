@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StorageFile, FileCategory } from '../../types/storage';
 import { detectFileCategory } from '../../services/indexedDbStorage';
 import { encryptFileContent } from '../../services/cryptoService';
-import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
+import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield, Zap } from 'lucide-react';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -32,8 +32,36 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // High-speed RAM cache to pre-load files the millisecond they are selected
+  const preloadedCacheRef = useRef<Map<File, string>>(new Map());
 
   if (!isOpen) return null;
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    // Return preloaded cache if available
+    const cached = preloadedCacheRef.current.get(file);
+    if (cached) return Promise.resolve(cached);
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        preloadedCacheRef.current.set(file, result);
+        resolve(result);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Pre-load files in background the moment they are selected or dropped
+  const preloadFiles = (files: File[]) => {
+    files.forEach(file => {
+      if (!preloadedCacheRef.current.has(file)) {
+        readFileAsDataUrl(file).catch(() => {});
+      }
+    });
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -52,6 +80,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const filesArray = Array.from(e.dataTransfer.files);
       setSelectedFiles(prev => [...prev, ...filesArray]);
+      preloadFiles(filesArray);
     }
   };
 
@@ -59,20 +88,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (e.target.files && e.target.files.length > 0) {
       const filesArray = Array.from(e.target.files);
       setSelectedFiles(prev => [...prev, ...filesArray]);
+      preloadFiles(filesArray);
     }
   };
 
   const removeSelectedFile = (index: number) => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
   };
 
   const handleUploadSubmit = async () => {
@@ -88,7 +109,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setIsUploading(true);
     setError(null);
-    setUploadProgress(5);
+    setUploadProgress(10);
 
     try {
       let completedCount = 0;
@@ -102,7 +123,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         const category: FileCategory = detectFileCategory(file.name, file.type);
         const storageFile: StorageFile = {
-          id: 'file-' + Date.now() + '-' + index + '-' + Math.random().toString(36).substring(2, 7),
+          id: 'file-' + Date.now() + '-' + index + '-' + Math.random().toString(36).substring(2, 8),
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
@@ -121,21 +142,23 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         completedCount++;
         setCurrentFileIndex(completedCount);
-        setUploadProgress(Math.round((completedCount / selectedFiles.length) * 100));
+        setUploadProgress(Math.min(99, Math.round((completedCount / selectedFiles.length) * 100)));
         return storageFile;
       };
 
-      // Fast concurrent processing in batches of 4 for speed and memory efficiency
-      const batchSize = 4;
+      // Turbo parallel processing: process all selected files concurrently
+      // with a high-throughput concurrency batch of 16 files for near-instant execution
+      const BATCH_SIZE = 16;
       const uploadedResults: StorageFile[] = [];
-      for (let i = 0; i < selectedFiles.length; i += batchSize) {
-        const currentBatch = selectedFiles.slice(i, i + batchSize);
+      for (let i = 0; i < selectedFiles.length; i += BATCH_SIZE) {
+        const currentBatch = selectedFiles.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(
           currentBatch.map((file, batchIdx) => processSingleFile(file, i + batchIdx))
         );
         uploadedResults.push(...batchResults);
       }
 
+      setUploadProgress(100);
       onFilesUploaded(uploadedResults);
       setIsUploading(false);
       onClose();
@@ -158,17 +181,23 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         </button>
 
         {/* Title */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-            <Upload className="w-6 h-6" />
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+              <Upload className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">
+                {lang === 'bn' ? 'ফাইল আপলোড করুন (১০০০ জিবি ক্লাউড)' : 'Upload Files (1000 GB Cloud)'}
+              </h3>
+              <p className="text-xs text-slate-400">
+                {lang === 'bn' ? 'একক বা একাধিক ফাইল একসাথে দ্রুত আপলোড করুন' : 'Single or bulk upload with high-speed engine'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-bold">
-              {lang === 'bn' ? 'ফাইল আপলোড করুন (১০০০ জিবি ক্লাউড)' : 'Upload Files (1000 GB Cloud)'}
-            </h3>
-            <p className="text-xs text-slate-400">
-              {lang === 'bn' ? 'একক বা একাধিক ফাইল একসাথে আপলোড করুন' : 'Single or bulk upload with zero friction'}
-            </p>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold shadow-sm shadow-cyan-500/20 mr-7">
+            <Zap className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400 animate-pulse" />
+            <span>{lang === 'bn' ? '⚡ টার্বো স্পিড সক্রিয়' : '⚡ Turbo Speed Active'}</span>
           </div>
         </div>
 
