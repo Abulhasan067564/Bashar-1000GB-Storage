@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StorageFile } from '../types/storage';
 import { 
   FileText, 
@@ -16,7 +16,12 @@ import {
   Eye, 
   CheckCircle2, 
   Circle,
-  ArchiveRestore
+  ArchiveRestore,
+  Folder,
+  FolderOpen,
+  Move,
+  Copy,
+  MoreVertical
 } from 'lucide-react';
 
 interface FileCardProps {
@@ -29,6 +34,10 @@ interface FileCardProps {
   onDelete: (file: StorageFile) => void;
   onToggleStar: (file: StorageFile) => void;
   onRestore?: (file: StorageFile) => void;
+  onOpenFolder?: (folder: StorageFile) => void;
+  onQuickMove?: (file: StorageFile) => void;
+  onQuickCopy?: (file: StorageFile) => void;
+  onDropIntoFolder?: (draggedFileId: string, targetFolderId: string) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -43,11 +52,18 @@ export const FileCard: React.FC<FileCardProps> = ({
   onDelete,
   onToggleStar,
   onRestore,
+  onOpenFolder,
+  onQuickMove,
+  onQuickCopy,
+  onDropIntoFolder,
   isTrash = false,
   lang
 }) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const isFolder = Boolean(file.isFolder);
+
   const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return isFolder ? (lang === 'bn' ? 'ফোল্ডার' : 'Folder') : '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -55,6 +71,9 @@ export const FileCard: React.FC<FileCardProps> = ({
   };
 
   const getCategoryTheme = () => {
+    if (isFolder) {
+      return { icon: Folder, color: 'text-amber-400', bg: 'bg-amber-950/40 border-amber-500/40' };
+    }
     switch (file.category) {
       case 'image':
         return { icon: ImageIcon, color: 'text-purple-400', bg: 'bg-purple-950/40 border-purple-800/40' };
@@ -76,10 +95,60 @@ export const FileCard: React.FC<FileCardProps> = ({
   const theme = getCategoryTheme();
   const IconComponent = theme.icon;
 
+  const handleClickCard = () => {
+    if (isFolder) {
+      if (onOpenFolder) onOpenFolder(file);
+    } else {
+      onPreview(file);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/plain', file.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (isFolder && !isTrash) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (isFolder && !isTrash) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      const draggedId = e.dataTransfer.getData('text/plain');
+      if (draggedId && draggedId !== file.id && onDropIntoFolder) {
+        onDropIntoFolder(draggedId, file.id);
+      }
+    }
+  };
+
   return (
     <div
-      onClick={() => onPreview(file)}
-      className={`group relative bg-slate-900/70 hover:bg-slate-800/90 border rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between ${isSelected ? 'border-cyan-400 ring-1 ring-cyan-400 bg-slate-800/90' : 'border-slate-800 hover:border-slate-700'}`}
+      onClick={handleClickCard}
+      draggable={!isFolder && !isTrash}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`group relative bg-slate-900/70 hover:bg-slate-800/90 border rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between ${
+        isSelected
+          ? 'border-cyan-400 ring-1 ring-cyan-400 bg-slate-800/90'
+          : isDragOver
+            ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-950/30 scale-105'
+            : isFolder
+              ? 'border-amber-500/30 hover:border-amber-400/60 bg-slate-900/80'
+              : 'border-slate-800 hover:border-slate-700'
+      }`}
     >
       {/* Top Header: Select Checkbox, Badges, Star */}
       <div className="flex items-center justify-between gap-1 mb-3">
@@ -87,6 +156,7 @@ export const FileCard: React.FC<FileCardProps> = ({
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleSelect(file.id); }}
           className="p-1 text-slate-400 hover:text-white transition"
+          title={isSelected ? 'Deselect' : 'Select'}
         >
           {isSelected ? (
             <CheckCircle2 className="w-5 h-5 text-cyan-400 fill-cyan-400/20" />
@@ -96,6 +166,15 @@ export const FileCard: React.FC<FileCardProps> = ({
         </button>
 
         <div className="flex items-center gap-1.5">
+          {isFolder && (
+            <span
+              className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40"
+              title={lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
+            >
+              {lang === 'bn' ? 'ফোল্ডার' : 'FOLDER'}
+            </span>
+          )}
+
           {file.isEncrypted && (
             <span
               className="p-1 rounded-md bg-amber-500/20 text-amber-400 text-xs border border-amber-500/30"
@@ -128,8 +207,12 @@ export const FileCard: React.FC<FileCardProps> = ({
       </div>
 
       {/* Middle: Thumbnail / Category Icon */}
-      <div className="flex flex-col items-center justify-center py-4 my-auto">
-        {file.category === 'image' && file.dataUrl ? (
+      <div className="flex flex-col items-center justify-center py-3 my-auto">
+        {isFolder ? (
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center border shadow-inner bg-amber-500/10 border-amber-500/30 group-hover:scale-105 transition">
+            <Folder className="w-8 h-8 text-amber-400 fill-amber-400/20" />
+          </div>
+        ) : file.category === 'image' && file.dataUrl ? (
           <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-700/60 bg-black/40 flex items-center justify-center shadow-inner">
             <img src={file.dataUrl} alt={file.name} className="w-full h-full object-cover" />
           </div>
@@ -157,30 +240,59 @@ export const FileCard: React.FC<FileCardProps> = ({
         <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition">
           {!isTrash ? (
             <>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onPreview(file); }}
-                className="p-1.5 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition"
-                title={lang === 'bn' ? 'প্রিভিউ' : 'Preview'}
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onShare(file); }}
-                className="p-1.5 hover:text-blue-400 rounded-lg hover:bg-slate-800 transition"
-                title={lang === 'bn' ? 'শেয়ার' : 'Share'}
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onDownload(file); }}
-                className="p-1.5 hover:text-emerald-400 rounded-lg hover:bg-slate-800 transition"
-                title={lang === 'bn' ? 'ডাউনলোড' : 'Download'}
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
+              {/* Move Quick Action */}
+              {onQuickMove && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onQuickMove(file); }}
+                  className="p-1.5 hover:text-indigo-400 rounded-lg hover:bg-slate-800 transition"
+                  title={lang === 'bn' ? 'ফোল্ডারে মুভ করুন' : 'Move to folder'}
+                >
+                  <Move className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Copy Quick Action */}
+              {onQuickCopy && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onQuickCopy(file); }}
+                  className="p-1.5 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition"
+                  title={lang === 'bn' ? 'কপি করুন' : 'Copy'}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {!isFolder && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onPreview(file); }}
+                    className="p-1.5 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition"
+                    title={lang === 'bn' ? 'প্রিভিউ' : 'Preview'}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onShare(file); }}
+                    className="p-1.5 hover:text-blue-400 rounded-lg hover:bg-slate-800 transition"
+                    title={lang === 'bn' ? 'শেয়ার' : 'Share'}
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onDownload(file); }}
+                    className="p-1.5 hover:text-emerald-400 rounded-lg hover:bg-slate-800 transition"
+                    title={lang === 'bn' ? 'ডাউনলোড' : 'Download'}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onDelete(file); }}

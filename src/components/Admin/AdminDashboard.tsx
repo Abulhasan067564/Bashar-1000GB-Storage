@@ -26,9 +26,22 @@ import {
   Check,
   Download,
   Filter,
-  Sparkles
+  Sparkles,
+  Camera,
+  Image as ImageIcon,
+  Upload,
+  X
 } from 'lucide-react';
 import { UserAccount, AdminCredentials } from '../../types/storage';
+
+const PRESET_LOGOS = [
+  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+];
 
 interface AdminDashboardProps {
   usersList: UserAccount[];
@@ -64,6 +77,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
   
+  // Password Visibility states (Password is viewable by Admin as requested)
+  const [showAllPasswords, setShowAllPasswords] = useState(true);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  // Edit User Modal state (Edit password, logo, birth date, name, email, etc.)
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserAccount | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmailOrPhone, setEditEmailOrPhone] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editBirthDate, setEditBirthDate] = useState('');
+  const [editCustomLogo, setEditCustomLogo] = useState('');
+  const [editSecretName, setEditSecretName] = useState('');
+  const [editStatus, setEditStatus] = useState<'active' | 'disabled'>('active');
+  const [showEditPassword, setShowEditPassword] = useState(true);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editLogoUrlInput, setEditLogoUrlInput] = useState('');
+
   // Admin Password Change Modal
   const [isChangeAdminPassOpen, setIsChangeAdminPassOpen] = useState(false);
   const [currentAdminPass, setCurrentAdminPass] = useState('');
@@ -87,6 +117,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
     showNotification(lang === 'bn' ? 'কপি করা হয়েছে!' : 'Copied to clipboard!');
+  };
+
+  // Open Edit User Modal
+  const handleOpenEditModal = (user: UserAccount) => {
+    setSelectedUserForEdit(user);
+    setEditName(user.name || '');
+    setEditEmailOrPhone(user.emailOrPhone || '');
+    setEditPassword(user.passwordHash || '');
+    setEditBirthDate(user.birthDate || '');
+    setEditCustomLogo(user.customLogo || '');
+    setEditSecretName(user.secretName || '');
+    setEditStatus(user.status || 'active');
+    setShowEditPassword(true);
+    setEditError(null);
+    setEditLogoUrlInput('');
+  };
+
+  // Handle Logo Upload from device
+  const handleEditLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setEditError(lang === 'bn' ? 'অনুগ্রহ করে একটি ছবি ফাইল নির্বাচন করুন (JPG, PNG, WebP)।' : 'Please select a valid image file.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setEditError(lang === 'bn' ? 'ছবির সাইজ সর্বোচ্চ ২ মেগাবাইট হতে পারবে।' : 'Image size cannot exceed 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setEditCustomLogo(reader.result as string);
+      setEditError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Apply Logo from URL input
+  const handleApplyLogoUrl = () => {
+    if (!editLogoUrlInput.trim()) return;
+    setEditCustomLogo(editLogoUrlInput.trim());
+    setEditLogoUrlInput('');
+  };
+
+  // Save Edited User Details
+  const handleSaveEditUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserForEdit) return;
+
+    if (!editName.trim()) {
+      setEditError(lang === 'bn' ? 'নাম খালি রাখা যাবে না।' : 'Full Name cannot be empty.');
+      return;
+    }
+
+    if (!editEmailOrPhone.trim()) {
+      setEditError(lang === 'bn' ? 'ইমেইল বা মোবাইল নম্বর খালি রাখা যাবে না।' : 'Email/Phone cannot be empty.');
+      return;
+    }
+
+    if (!editPassword.trim()) {
+      setEditError(lang === 'bn' ? 'পাসওয়ার্ড খালি রাখা যাবে না।' : 'Password cannot be empty.');
+      return;
+    }
+
+    // Check email uniqueness if changed
+    const emailConflict = usersList.find(
+      u => u.id !== selectedUserForEdit.id && 
+           u.emailOrPhone.trim().toLowerCase() === editEmailOrPhone.trim().toLowerCase()
+    );
+    if (emailConflict) {
+      setEditError(
+        lang === 'bn' 
+          ? 'এই ইমেইল বা মোবাইল নম্বরটি দিয়ে ইতোমধ্যে অন্য একটি অ্যাকাউন্ট আছে!' 
+          : 'This email or phone number is already registered by another user!'
+      );
+      return;
+    }
+
+    const updatedUser: UserAccount = {
+      ...selectedUserForEdit,
+      name: editName.trim(),
+      emailOrPhone: editEmailOrPhone.trim(),
+      passwordHash: editPassword.trim(),
+      birthDate: editBirthDate.trim() || undefined,
+      customLogo: editCustomLogo.trim() || undefined,
+      secretName: editSecretName.trim() || selectedUserForEdit.secretName,
+      status: editStatus
+    };
+
+    const updated = usersList.map(u => u.id === selectedUserForEdit.id ? updatedUser : u);
+    onUpdateUsersList(updated);
+
+    showNotification(
+      lang === 'bn'
+        ? `${updatedUser.name}-এর তথ্য (পাসওয়ার্ড, লোগো, জন্ম তারিখ) সফলভাবে আপডেট হয়েছে!`
+        : `User details updated successfully!`
+    );
+
+    setSelectedUserForEdit(null);
   };
 
   // Toggle User Status (Active <-> Disabled)
@@ -583,7 +715,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {lang === 'bn' ? 'স্ট্যাটাস (Status)' : 'Status'}
                     </th>
                     <th className="py-3 px-4">
-                      {lang === 'bn' ? 'পাসওয়ার্ড (Password)' : 'Password'}
+                      <div className="flex items-center gap-2">
+                        <span>{lang === 'bn' ? 'পাসওয়ার্ড (Password)' : 'Password'}</span>
+                        <button
+                          onClick={() => setShowAllPasswords(!showAllPasswords)}
+                          className="px-2 py-0.5 rounded-md text-slate-400 hover:text-white bg-slate-900 border border-slate-800 transition text-[10px] flex items-center gap-1 font-sans cursor-pointer"
+                          title={showAllPasswords ? (lang === 'bn' ? 'সকল পাসওয়ার্ড লুকান' : 'Hide all passwords') : (lang === 'bn' ? 'সকল পাসওয়ার্ড দেখুন' : 'Show all passwords')}
+                        >
+                          {showAllPasswords ? <EyeOff className="w-3 h-3 text-amber-400" /> : <Eye className="w-3 h-3 text-cyan-400" />}
+                          <span className="hidden xl:inline">{showAllPasswords ? (lang === 'bn' ? 'লুকান' : 'Hide') : (lang === 'bn' ? 'দেখান' : 'Show')}</span>
+                        </button>
+                      </div>
                     </th>
                     <th className="py-3 px-4 text-right rounded-r-xl">
                       {lang === 'bn' ? 'অ্যাকশন (Actions)' : 'Actions'}
@@ -593,40 +735,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
                   {filteredUsers.map(user => {
                     const isActive = (user.status || 'active') === 'active';
+                    const isPassVisible = showAllPasswords || Boolean(revealedPasswords[user.id]);
 
                     return (
                       <tr 
                         key={user.id} 
                         className="hover:bg-slate-800/40 transition group"
                       >
-                        {/* 1. Full Name + Avatar */}
+                        {/* 1. Full Name + Avatar / Logo + Birthdate */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             {user.customLogo ? (
                               <img
                                 src={user.customLogo}
                                 alt={user.name}
-                                className="w-9 h-9 rounded-xl object-cover border border-slate-700 shrink-0"
+                                className="w-10 h-10 rounded-xl object-cover border border-cyan-500/40 shadow-sm shrink-0"
                               />
                             ) : (
-                              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center font-bold text-slate-950 text-xs shrink-0 shadow-sm">
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center font-bold text-slate-950 text-xs shrink-0 shadow-sm">
                                 {user.name.charAt(0).toUpperCase()}
                               </div>
                             )}
                             <div>
-                              <div className="font-bold text-white flex items-center gap-1.5">
+                              <div className="font-bold text-white flex items-center gap-2">
                                 <span>{user.name}</span>
                                 {user.birthDate && (
-                                  <span className="text-[10px] text-slate-400 font-normal">
-                                    ({user.birthDate})
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 text-[10px] font-mono">
+                                    <Calendar className="w-2.5 h-2.5 text-cyan-400" />
+                                    <span>{user.birthDate}</span>
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                              <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                                 <span>ID: {user.id.slice(0, 12)}</span>
                                 <button
                                   onClick={() => handleCopy(user.id, `id-${user.id}`)}
-                                  className="hover:text-slate-300"
+                                  className="hover:text-slate-300 cursor-pointer"
                                   title="Copy User ID"
                                 >
                                   {copiedId === `id-${user.id}` ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
@@ -679,26 +823,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </button>
                         </td>
 
-                        {/* 5. Password Management (Secure & Protected) */}
+                        {/* 5. Password Management (Visible & Viewable to Admin) */}
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <span 
-                              className="font-mono text-xs bg-slate-950/90 px-2.5 py-1 rounded-md border border-slate-800 text-slate-400 flex items-center gap-1.5"
-                              title={lang === 'bn' ? 'পাসওয়ার্ড সুরক্ষিত ও অপ্রকাশিত' : 'Password is encrypted & confidential'}
+                              className="font-mono text-xs bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-amber-300 font-bold flex items-center gap-1.5 shadow-inner"
+                              title={lang === 'bn' ? 'ইউজারের আসল পাসওয়ার্ড' : 'User password'}
                             >
-                              <Lock className="w-3 h-3 text-emerald-400" />
-                              <span className="tracking-widest">••••••••</span>
+                              <Lock className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span className="tracking-wide select-all">
+                                {isPassVisible ? user.passwordHash : '••••••••'}
+                              </span>
                             </span>
+
+                            {/* Toggle password visibility */}
                             <button
-                              onClick={() => {
-                                setSelectedUserForReset(user);
-                                setNewPasswordInput('');
-                              }}
-                              className="px-2 py-1 rounded-md bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-800/50 transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-                              title={lang === 'bn' ? 'পাসওয়ার্ড রিসেট করুন' : 'Reset user password'}
+                              onClick={() => setRevealedPasswords(prev => ({ ...prev, [user.id]: !Boolean(prev[user.id]) }))}
+                              className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                              title={isPassVisible ? (lang === 'bn' ? 'লুকান' : 'Hide') : (lang === 'bn' ? 'দেখান' : 'Show')}
                             >
-                              <KeyRound className="w-3 h-3 text-amber-400" />
-                              <span>{lang === 'bn' ? 'রিসেট' : 'Reset'}</span>
+                              {isPassVisible ? <EyeOff className="w-3.5 h-3.5 text-slate-400" /> : <Eye className="w-3.5 h-3.5 text-cyan-400" />}
+                            </button>
+
+                            {/* Copy password */}
+                            <button
+                              onClick={() => handleCopy(user.passwordHash, `pass-${user.id}`)}
+                              className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                              title={lang === 'bn' ? 'পাসওয়ার্ড কপি করুন' : 'Copy password'}
+                            >
+                              {copiedId === `pass-${user.id}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                           </div>
                         </td>
@@ -706,6 +859,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {/* 6. Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Edit User Details, Logo, Birthdate, Password */}
+                            <button
+                              onClick={() => handleOpenEditModal(user)}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-800/60 transition cursor-pointer text-[11px] font-bold flex items-center gap-1 shadow-sm"
+                              title={lang === 'bn' ? 'ইউজার এডিট করুন (পাসওয়ার্ড, লোগো, জন্ম তারিখ)' : 'Edit user'}
+                            >
+                              <Edit3 className="w-3 h-3 text-cyan-400" />
+                              <span>{lang === 'bn' ? 'এডিট' : 'Edit'}</span>
+                            </button>
+
                             {/* View Profile Details */}
                             <button
                               onClick={() => setSelectedUserForDetails(user)}
@@ -800,15 +963,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="text-slate-200 mt-0.5">{formatDate(selectedUserForDetails.createdAt)}</div>
                 </div>
                 <div className="col-span-2">
-                  <div className="text-slate-500 text-[10px] uppercase font-bold">{lang === 'bn' ? 'পাসওয়ার্ড নিরাপত্তা' : 'Password Security'}</div>
-                  <div className="flex items-center justify-between bg-slate-950/90 px-3.5 py-2.5 rounded-xl border border-slate-800 mt-1">
+                  <div className="text-slate-500 text-[10px] uppercase font-bold">{lang === 'bn' ? 'ইউজার পাসওয়ার্ড (Password)' : 'User Password'}</div>
+                  <div className="flex items-center justify-between bg-slate-950 px-3.5 py-2.5 rounded-xl border border-slate-800 mt-1">
                     <div className="flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-emerald-400" />
-                      <span className="font-mono text-slate-300 tracking-widest text-xs">••••••••••••</span>
+                      <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="font-mono text-amber-300 font-bold tracking-wider text-sm select-all">
+                        {selectedUserForDetails.passwordHash}
+                      </span>
                     </div>
-                    <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-800/60">
-                      {lang === 'bn' ? 'নিরাপদ ও অপ্রকাশিত' : 'Protected & Encrypted'}
-                    </span>
+                    <button
+                      onClick={() => handleCopy(selectedUserForDetails.passwordHash, `det-pass-${selectedUserForDetails.id}`)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer text-xs flex items-center gap-1 font-semibold"
+                    >
+                      {copiedId === `det-pass-${selectedUserForDetails.id}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{lang === 'bn' ? 'কপি' : 'Copy'}</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -833,15 +1002,320 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={() => {
-                  setSelectedUserForReset(selectedUserForDetails);
+                  const user = selectedUserForDetails;
                   setSelectedUserForDetails(null);
-                  setNewPasswordInput('');
+                  handleOpenEditModal(user);
                 }}
-                className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-cyan-600/20"
               >
-                {lang === 'bn' ? 'পাসওয়ার্ড রিসেট' : 'Reset Password'}
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? 'এডিট করুন' : 'Edit User'}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: EDIT USER (Password, Logo, Birth Date, Info) --- */}
+      {selectedUserForEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-3xl p-6 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Edit3 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    {lang === 'bn' ? 'ইউজার তথ্য সম্পাদনা (Edit Profile)' : 'Edit User Profile'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {lang === 'bn' 
+                      ? 'পাসওয়ার্ড, লোগো, জন্ম তারিখ ও অন্যান্য তথ্য পরিবর্তন করুন' 
+                      : 'Update password, logo, birth date, and user details'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedUserForEdit(null)}
+                className="text-slate-400 hover:text-white p-1 text-lg rounded-lg hover:bg-slate-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {editError && (
+              <div className="mt-4 p-3 rounded-xl bg-red-950/70 border border-red-800 text-red-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditUser} className="space-y-5 mt-4 text-xs">
+              
+              {/* 1. Logo / Avatar Selection */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5 text-[11px]">
+                    <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{lang === 'bn' ? 'লোগো বা প্রোফাইল ছবি নির্ধারণ' : 'Set User Logo / Profile Picture'}</span>
+                  </span>
+                  {editCustomLogo && (
+                    <button
+                      type="button"
+                      onClick={() => setEditCustomLogo('')}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                    >
+                      {lang === 'bn' ? 'লোগো মুছে ফেলুন' : 'Remove Logo'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  {/* Current Logo Preview */}
+                  <div className="relative group shrink-0">
+                    {editCustomLogo ? (
+                      <img
+                        src={editCustomLogo}
+                        alt="Logo Preview"
+                        className="w-16 h-16 rounded-2xl object-cover border-2 border-cyan-500/50 shadow-md shadow-cyan-500/10"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-2xl bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-400 text-xs font-bold">
+                        {editName ? editName.charAt(0).toUpperCase() : '?'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload from Device or URL */}
+                  <div className="flex-1 w-full space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold cursor-pointer transition flex items-center justify-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{lang === 'bn' ? 'ডিভাইস থেকে ছবি আপলোড' : 'Upload from Device'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleEditLogoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {/* Image URL input */}
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="url"
+                        value={editLogoUrlInput}
+                        onChange={e => setEditLogoUrlInput(e.target.value)}
+                        placeholder={lang === 'bn' ? 'অথবা ছবির লিঙ্ক (URL) দিন' : 'Or enter image URL'}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyLogoUrl}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs cursor-pointer border border-slate-700"
+                      >
+                        {lang === 'bn' ? 'সেট' : 'Set'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset Avatars */}
+                <div>
+                  <div className="text-[10px] text-slate-400 font-semibold mb-1.5">
+                    {lang === 'bn' ? 'দ্রুত পছন্দের জন্য প্রি-সেট অ্যাভাটার:' : 'Quick Presets:'}
+                  </div>
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {PRESET_LOGOS.map((url, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setEditCustomLogo(url)}
+                        className={`w-9 h-9 rounded-xl overflow-hidden border-2 transition shrink-0 cursor-pointer ${
+                          editCustomLogo === url ? 'border-cyan-400 scale-105 shadow-md' : 'border-slate-700 hover:border-slate-500 opacity-75 hover:opacity-100'
+                        }`}
+                      >
+                        <img src={url} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Personal Information (Name & Email/Phone) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                    {lang === 'bn' ? 'ইউজারের পুরো নাম' : 'Full Name'} *
+                  </label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    required
+                    placeholder={lang === 'bn' ? 'নাম লিখুন' : 'Enter name'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                    {lang === 'bn' ? 'ইমেইল বা মোবাইল নম্বর' : 'Email or Phone'} *
+                  </label>
+                  <input
+                    type="text"
+                    value={editEmailOrPhone}
+                    onChange={e => setEditEmailOrPhone(e.target.value)}
+                    required
+                    placeholder={lang === 'bn' ? 'ইমেইল বা ফোন নম্বর' : 'Enter email or phone'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* 3. Birth Date & Secret Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Birth Date */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-300 uppercase">
+                      {lang === 'bn' ? 'জন্ম তারিখ (Date of Birth)' : 'Date of Birth'}
+                    </label>
+                    {editBirthDate && (
+                      <button
+                        type="button"
+                        onClick={() => setEditBirthDate('')}
+                        className="text-[10px] text-slate-400 hover:text-white"
+                      >
+                        {lang === 'bn' ? 'ক্লিয়ার' : 'Clear'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={editBirthDate}
+                      onChange={e => setEditBirthDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Secret Recovery Name */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                    {lang === 'bn' ? 'সিক্রেট নাম (পাসওয়ার্ড রিকভারি)' : 'Secret Name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editSecretName}
+                    onChange={e => setEditSecretName(e.target.value)}
+                    placeholder={lang === 'bn' ? 'পাসওয়ার্ড উদ্ধারের গোপন নাম' : 'Secret recovery word'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              {/* 4. Password Viewing and Editing */}
+              <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{lang === 'bn' ? 'পাসওয়ার্ড প্রদর্শন ও পরিবর্তন' : 'View & Edit Password'} *</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400">
+                    {lang === 'bn' ? 'অ্যাডমিন সরাসরি দেখতে ও বদলাতে পারবেন' : 'Directly view & modify'}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-2.5 w-4 h-4 text-amber-400" />
+                  <input
+                    type={showEditPassword ? 'text' : 'password'}
+                    value={editPassword}
+                    onChange={e => setEditPassword(e.target.value)}
+                    required
+                    placeholder={lang === 'bn' ? 'পাসওয়ার্ড লিখুন' : 'Enter password'}
+                    className="w-full bg-slate-900 border border-amber-900/60 rounded-xl pl-10 pr-20 py-2.5 text-xs text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                  />
+                  <div className="absolute right-2 top-2 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPassword(!showEditPassword)}
+                      className="p-1 text-slate-400 hover:text-white transition"
+                      title={showEditPassword ? (lang === 'bn' ? 'লুকান' : 'Hide') : (lang === 'bn' ? 'দেখান' : 'Show')}
+                    >
+                      {showEditPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(editPassword, 'edit-pass')}
+                      className="p-1 text-slate-400 hover:text-white transition"
+                      title={lang === 'bn' ? 'কপি করুন' : 'Copy'}
+                    >
+                      {copiedId === 'edit-pass' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Account Status */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1.5">
+                  {lang === 'bn' ? 'অ্যাকাউন্ট স্ট্যাটাস' : 'Account Status'}
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs cursor-pointer flex-1">
+                    <input
+                      type="radio"
+                      name="editStatus"
+                      value="active"
+                      checked={editStatus === 'active'}
+                      onChange={() => setEditStatus('active')}
+                      className="text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <span className="font-semibold text-emerald-400">
+                      {lang === 'bn' ? 'সক্রিয় (Active)' : 'Active'}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs cursor-pointer flex-1">
+                    <input
+                      type="radio"
+                      name="editStatus"
+                      value="disabled"
+                      checked={editStatus === 'disabled'}
+                      onChange={() => setEditStatus('disabled')}
+                      className="text-rose-500 focus:ring-rose-500"
+                    />
+                    <span className="font-semibold text-rose-400">
+                      {lang === 'bn' ? 'নিষ্ক্রিয় (Disabled)' : 'Disabled'}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserForEdit(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer text-xs"
+                >
+                  {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold transition shadow-lg shadow-cyan-500/20 cursor-pointer text-xs flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                  <span>{lang === 'bn' ? 'সংরক্ষণ করুন' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

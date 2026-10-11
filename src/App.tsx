@@ -6,7 +6,8 @@ import {
   ActiveTab, 
   ViewMode, 
   FileCategory,
-  AdminCredentials 
+  AdminCredentials,
+  ClipboardState
 } from './types/storage';
 import { 
   getAllStoredFiles, 
@@ -32,6 +33,7 @@ import { Sidebar } from './components/Sidebar';
 import { ActionBar } from './components/ActionBar';
 import { FileCard } from './components/FileCard';
 import { FileListRow } from './components/FileListRow';
+import { YouTubeBanner } from './components/YouTubeBanner';
 import { AuthScreen } from './components/AuthScreen';
 import { AdminLogin } from './components/Admin/AdminLogin';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
@@ -40,6 +42,9 @@ import { ProfileModal } from './components/Modals/ProfileModal';
 import { ShareModal } from './components/Modals/ShareModal';
 import { PreviewModal } from './components/Modals/PreviewModal';
 import { UploadModal } from './components/Modals/UploadModal';
+import { CreateFileModal } from './components/Modals/CreateFileModal';
+import { CreateFolderModal } from './components/Modals/CreateFolderModal';
+import { MoveCopyModal } from './components/Modals/MoveCopyModal';
 import { 
   Cloud, 
   Upload, 
@@ -48,8 +53,8 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_ADMIN: AdminCredentials = {
-  username: 'admin',
-  passwordHash: 'admin123',
+  username: 'ArRahman7',
+  passwordHash: 'Rahim@Chabi28',
   updatedAt: new Date().toISOString()
 };
 
@@ -69,7 +74,11 @@ export default function App() {
     const saved = localStorage.getItem(STORAGE_ADMIN_CREDS_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed.username === 'admin') {
+          return DEFAULT_ADMIN;
+        }
+        return parsed;
       } catch {
         return DEFAULT_ADMIN;
       }
@@ -122,6 +131,8 @@ export default function App() {
   
   const [files, setFiles] = useState<StorageFile[]>([]);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('all');
   const [selectedCategory, setSelectedCategory] = useState<FileCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,6 +143,11 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isCreateFileOpen, setIsCreateFileOpen] = useState(false);
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [isMoveCopyOpen, setIsMoveCopyOpen] = useState(false);
+  const [moveCopyAction, setMoveCopyAction] = useState<'move' | 'copy'>('move');
+  const [targetFileIdsForModal, setTargetFileIdsForModal] = useState<string[]>([]);
   const [previewFile, setPreviewFile] = useState<StorageFile | null>(null);
   const [shareFile, setShareFile] = useState<StorageFile | null>(null);
   
@@ -165,11 +181,13 @@ export default function App() {
 
         // Sync admin credentials
         const cloudAdmin = await loadAdminCredentialsFromFirestore();
-        if (cloudAdmin) {
+        if (cloudAdmin && cloudAdmin.username !== 'admin') {
           setAdminCredentials(cloudAdmin);
           localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(cloudAdmin));
         } else {
-          // Initialize default admin in cloud if not yet created
+          // Initialize default admin (ArRahman7 / Rahim@Chabi28) in cloud
+          setAdminCredentials(DEFAULT_ADMIN);
+          localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(DEFAULT_ADMIN));
           saveAdminCredentialsToFirestore(DEFAULT_ADMIN).catch(() => {});
         }
       } catch (err) {
@@ -253,6 +271,12 @@ export default function App() {
   const handleUpdateUsersList = (updated: UserAccount[]) => {
     setUsersList(updated);
     localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updated));
+    if (currentUser) {
+      const matched = updated.find(u => u.id === currentUser.id);
+      if (matched) {
+        setCurrentUser(matched);
+      }
+    }
     // Background sync to Firestore
     updated.forEach(u => {
       saveUserToFirestore(u).catch(() => {});
@@ -445,6 +469,10 @@ export default function App() {
   const sharedCount = useMemo(() => files.filter(f => !f.inTrash && f.shared?.isShared).length, [files]);
   const vaultCount = useMemo(() => files.filter(f => !f.inTrash && f.isEncrypted).length, [files]);
 
+  // All folders list & current active folder
+  const allFolders = useMemo(() => files.filter(f => f.isFolder && !f.inTrash), [files]);
+  const currentFolder = useMemo(() => files.find(f => f.id === currentFolderId) || null, [files, currentFolderId]);
+
   // Filtered and Sorted Files
   const filteredFiles = useMemo(() => {
     let result = files.filter(file => {
@@ -456,6 +484,12 @@ export default function App() {
         if (activeTab === 'starred' && !file.isStarred) return false;
         if (activeTab === 'shared' && !file.shared?.isShared) return false;
         if (activeTab === 'vault' && !file.isEncrypted) return false;
+      }
+
+      // In 'all' tab: filter by folder hierarchy unless user is searching
+      if (activeTab === 'all' && !searchQuery.trim()) {
+        const itemFolderId = file.folderId || null;
+        if (itemFolderId !== (currentFolderId || null)) return false;
       }
 
       // Category filter
@@ -474,8 +508,11 @@ export default function App() {
       return true;
     });
 
-    // Sorting
+    // Sorting: Folders first, then sorted by date/name/size
     result.sort((a, b) => {
+      if (Boolean(a.isFolder) !== Boolean(b.isFolder)) {
+        return a.isFolder ? -1 : 1;
+      }
       if (sortBy === 'name') {
         return a.name.localeCompare(b.name);
       }
@@ -487,7 +524,175 @@ export default function App() {
     });
 
     return result;
-  }, [files, activeTab, selectedCategory, searchQuery, sortBy]);
+  }, [files, activeTab, currentFolderId, selectedCategory, searchQuery, sortBy]);
+
+  // Create Folder
+  const handleCreateFolder = (folderName: string): StorageFile | null => {
+    if (!currentUser) return null;
+    const now = new Date().toISOString();
+    const newFolder: StorageFile = {
+      id: 'folder_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+      name: folderName.trim(),
+      size: 0,
+      type: 'inode/directory',
+      category: 'other',
+      uploadedAt: now,
+      updatedAt: now,
+      isStarred: false,
+      isEncrypted: false,
+      inTrash: false,
+      ownerId: currentUser.id,
+      isFolder: true,
+      folderId: currentFolderId || null
+    };
+
+    saveStoredFile(newFolder).then(() => {
+      saveFileToFirestore(newFolder).catch(() => {});
+    });
+    setFiles(prev => [newFolder, ...prev]);
+    showToast(lang === 'bn' ? `"${newFolder.name}" ফোল্ডার তৈরি হয়েছে!` : `Folder "${newFolder.name}" created!`);
+    return newFolder;
+  };
+
+  // Create File
+  const handleCreateFile = async (newFile: StorageFile) => {
+    await saveStoredFile(newFile);
+    saveFileToFirestore(newFile).catch(() => {});
+    setFiles(prev => [newFile, ...prev]);
+    showToast(lang === 'bn' ? `"${newFile.name}" ফাইল তৈরি হয়েছে!` : `File "${newFile.name}" created!`);
+  };
+
+  // Folder Navigation
+  const handleOpenFolder = (folder: StorageFile) => {
+    setCurrentFolderId(folder.id);
+    setSelectedFileIds(new Set());
+  };
+
+  const handleNavigateUpFolder = () => {
+    if (!currentFolder) {
+      setCurrentFolderId(null);
+      return;
+    }
+    const parentFolder = currentFolder.folderId ? files.find(f => f.id === currentFolder.folderId) : null;
+    setCurrentFolderId(parentFolder ? parentFolder.id : null);
+    setSelectedFileIds(new Set());
+  };
+
+  // Open Move or Copy Modal
+  const handleOpenMoveModal = (singleFile?: StorageFile) => {
+    if (singleFile) {
+      setTargetFileIdsForModal([singleFile.id]);
+    } else {
+      setTargetFileIdsForModal(Array.from(selectedFileIds));
+    }
+    setMoveCopyAction('move');
+    setIsMoveCopyOpen(true);
+  };
+
+  const handleOpenCopyModal = (singleFile?: StorageFile) => {
+    if (singleFile) {
+      setTargetFileIdsForModal([singleFile.id]);
+    } else {
+      setTargetFileIdsForModal(Array.from(selectedFileIds));
+    }
+    setMoveCopyAction('copy');
+    setIsMoveCopyOpen(true);
+  };
+
+  // EXECUTE MOVE OR COPY
+  const handleExecuteMoveCopy = async (
+    action: 'move' | 'copy',
+    targetFolderId: string | null,
+    specificFileIds?: string[]
+  ) => {
+    const idsToProcess = specificFileIds && specificFileIds.length > 0
+      ? specificFileIds
+      : Array.from(selectedFileIds);
+
+    if (idsToProcess.length === 0) return;
+
+    if (action === 'move') {
+      // MOVE: Update folderId so items reside inside target folder, no longer in the outer directory
+      const updatedList: StorageFile[] = [];
+      const now = new Date().toISOString();
+      const newFiles = files.map(f => {
+        if (idsToProcess.includes(f.id)) {
+          const upd: StorageFile = {
+            ...f,
+            folderId: targetFolderId || null,
+            updatedAt: now
+          };
+          updatedList.push(upd);
+          return upd;
+        }
+        return f;
+      });
+
+      await saveMultipleStoredFiles(updatedList);
+      updatedList.forEach(f => saveFileToFirestore(f).catch(() => {}));
+      setFiles(newFiles);
+
+      showToast(
+        lang === 'bn'
+          ? `${idsToProcess.length} টি ফাইল ফোল্ডারে মুভ করা হয়েছে!`
+          : `${idsToProcess.length} files moved into folder!`
+      );
+    } else {
+      // COPY: Duplicate items into target folder, originals stay in place
+      const copies: StorageFile[] = [];
+      const now = new Date().toISOString();
+
+      idsToProcess.forEach(id => {
+        const original = files.find(f => f.id === id);
+        if (original) {
+          const isSameFolder = (original.folderId || null) === (targetFolderId || null);
+          const copyName = isSameFolder
+            ? original.name.replace(/(\.[^.]+$|$)/, ` - Copy$1`)
+            : original.name;
+
+          const copyItem: StorageFile = {
+            ...original,
+            id: 'copy_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+            name: copyName,
+            folderId: targetFolderId || null,
+            uploadedAt: now,
+            updatedAt: now,
+            isStarred: false
+          };
+          copies.push(copyItem);
+        }
+      });
+
+      if (copies.length > 0) {
+        await saveMultipleStoredFiles(copies);
+        copies.forEach(f => saveFileToFirestore(f).catch(() => {}));
+        setFiles(prev => [...copies, ...prev]);
+        showToast(
+          lang === 'bn'
+            ? `${copies.length} টি ফাইল সফলভাবে কপি করা হয়েছে!`
+            : `${copies.length} files copied successfully!`
+        );
+      }
+    }
+
+    setSelectedFileIds(new Set());
+    setClipboard(null);
+  };
+
+  // Clipboard handlers
+  const handleExecuteClipboard = () => {
+    if (!clipboard) return;
+    handleExecuteMoveCopy(clipboard.action, currentFolderId, clipboard.itemIds);
+  };
+
+  const handleCancelClipboard = () => {
+    setClipboard(null);
+  };
+
+  // Drag and drop into folder
+  const handleDropIntoFolder = (draggedFileId: string, targetFolderId: string) => {
+    handleExecuteMoveCopy('move', targetFolderId, [draggedFileId]);
+  };
 
   // Toggle selection
   const handleToggleSelect = (id: string) => {
@@ -633,12 +838,15 @@ export default function App() {
     }
   };
 
-  // Files Uploaded callback
+  // Files Uploaded callback (Optimized for ultra-fast response)
   const handleFilesUploaded = async (newFiles: StorageFile[]) => {
-    await saveMultipleStoredFiles(newFiles);
-    newFiles.forEach(f => saveFileToFirestore(f).catch(() => {}));
+    // 1. Instant optimistic state update: files appear immediately in UI without waiting
     setFiles(prev => [...newFiles, ...prev]);
-    showToast(lang === 'bn' ? `${newFiles.length} টি ফাইল সফলভাবে আপলোড হয়েছে!` : `${newFiles.length} files uploaded successfully!`);
+    showToast(lang === 'bn' ? `${newFiles.length} টি ফাইল দ্রুত সফলভাবে আপলোড হয়েছে!` : `${newFiles.length} files uploaded quickly!`);
+
+    // 2. High-speed background persistence to IndexedDB and Firestore
+    saveMultipleStoredFiles(newFiles).catch(err => console.error('IndexedDB error:', err));
+    Promise.all(newFiles.map(f => saveFileToFirestore(f).catch(() => {}))).catch(() => {});
   };
 
   // IF ADMIN VIEW ACTIVE:
@@ -744,6 +952,9 @@ export default function App() {
         isSyncingFiles={isSyncingFiles}
       />
 
+      {/* YouTube Gojol Studio Banner */}
+      <YouTubeBanner lang={lang} />
+
       {/* Body Layout: Sidebar + Main File Manager */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
@@ -760,7 +971,7 @@ export default function App() {
 
         {/* Center / Right Content Area */}
         <main className="flex-1 flex flex-col min-w-0 bg-slate-950/50 overflow-y-auto">
-          {/* Action Bar (Batch select, batch download all, batch delete all, filters) */}
+          {/* Action Bar (Batch select, batch download all, batch delete all, filters, folder nav, copy/move) */}
           <ActionBar
             activeTab={activeTab}
             totalFilteredFiles={filteredFiles.length}
@@ -770,6 +981,15 @@ export default function App() {
             onBatchDelete={handleBatchDelete}
             onBatchDownloadZip={handleBatchDownloadZip}
             onOpenUpload={() => setIsUploadOpen(true)}
+            onOpenCreateFile={() => setIsCreateFileOpen(true)}
+            onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
+            onOpenMoveModal={() => handleOpenMoveModal()}
+            onOpenCopyModal={() => handleOpenCopyModal()}
+            clipboard={clipboard}
+            onExecuteClipboard={handleExecuteClipboard}
+            onCancelClipboard={handleCancelClipboard}
+            currentFolder={currentFolder}
+            onNavigateUpFolder={handleNavigateUpFolder}
             onEmptyTrash={handleEmptyTrash}
             onRestoreAllTrash={handleRestoreAllTrash}
             viewMode={viewMode}
@@ -790,20 +1010,38 @@ export default function App() {
                   <Cloud className="w-8 h-8" />
                 </div>
                 <h3 className="text-base font-bold text-slate-200">
-                  {lang === 'bn' ? 'ড্রাইভটিতে এখনো কোনো ফাইল নেই' : 'Your 1000 GB Drive is Empty'}
+                  {currentFolder
+                    ? (lang === 'bn' ? `"${currentFolder.name}" ফোল্ডারটিতে কোনো ফাইল নেই` : `Folder "${currentFolder.name}" is empty`)
+                    : (lang === 'bn' ? 'ড্রাইভটিতে এখনো কোনো ফাইল নেই' : 'Your 1000 GB Drive is Empty')}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-sm mt-1 mb-5">
                   {searchQuery
                     ? (lang === 'bn' ? 'আপনার সার্চ কোয়েরির সাথে কোনো ফাইল মেলেনি।' : 'No files match your search query.')
-                    : (lang === 'bn' ? 'আপনার ১০০০ জিবি স্পেসে একক বা একসাথে একাধিক ফাইল আপলোড শুরু করুন।' : 'Start uploading your files into your 1000 GB secure cloud space.')}
+                    : currentFolder
+                      ? (lang === 'bn' ? 'এই ফোল্ডারের ভিতরে ফাইল তৈরি করুন, আপলোড করুন বা অন্য ফাইল মুভ করে নিয়ে আসুন।' : 'Create, upload, or move files into this folder.')
+                      : (lang === 'bn' ? 'আপনার ১০০০ জিবি স্পেসে নতুন ফাইল তৈরি করুন বা ফাইল আপলোড শুরু করুন।' : 'Start creating or uploading your files into your 1000 GB space.')}
                 </p>
-                <button
-                  onClick={() => setIsUploadOpen(true)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer transition hover:scale-105"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>{lang === 'bn' ? 'ফাইল আপলোড করুন' : 'Upload Files'}</span>
-                </button>
+                <div className="flex items-center gap-3 flex-wrap justify-center">
+                  <button
+                    onClick={() => setIsCreateFileOpen(true)}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs rounded-xl border border-cyan-500/30 transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>{lang === 'bn' ? 'নতুন ফাইল তৈরি' : 'Create File'}</span>
+                  </button>
+                  <button
+                    onClick={() => setIsCreateFolderOpen(true)}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
+                  </button>
+                  <button
+                    onClick={() => setIsUploadOpen(true)}
+                    className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer transition hover:scale-105"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>{lang === 'bn' ? 'ফাইল আপলোড করুন' : 'Upload Files'}</span>
+                  </button>
+                </div>
               </div>
             ) : viewMode === 'grid' ? (
               /* Grid View */
@@ -820,6 +1058,10 @@ export default function App() {
                     onDelete={handleDeleteFile}
                     onToggleStar={handleToggleStar}
                     onRestore={handleRestoreFile}
+                    onOpenFolder={handleOpenFolder}
+                    onQuickMove={handleOpenMoveModal}
+                    onQuickCopy={handleOpenCopyModal}
+                    onDropIntoFolder={handleDropIntoFolder}
                     isTrash={activeTab === 'trash'}
                     lang={lang}
                   />
@@ -851,6 +1093,10 @@ export default function App() {
                         onDelete={handleDeleteFile}
                         onToggleStar={handleToggleStar}
                         onRestore={handleRestoreFile}
+                        onOpenFolder={handleOpenFolder}
+                        onQuickMove={handleOpenMoveModal}
+                        onQuickCopy={handleOpenCopyModal}
+                        onDropIntoFolder={handleDropIntoFolder}
                         isTrash={activeTab === 'trash'}
                         lang={lang}
                       />
@@ -889,6 +1135,49 @@ export default function App() {
         />
       )}
 
+      {/* Create New File Modal */}
+      {currentUser && (
+        <CreateFileModal
+          isOpen={isCreateFileOpen}
+          onClose={() => setIsCreateFileOpen(false)}
+          onFileCreated={handleCreateFile}
+          ownerId={currentUser.id}
+          currentFolderId={currentFolderId}
+          lang={lang}
+        />
+      )}
+
+      {/* Create New Folder Modal */}
+      {currentUser && (
+        <CreateFolderModal
+          isOpen={isCreateFolderOpen}
+          onClose={() => setIsCreateFolderOpen(false)}
+          onFolderCreated={(folder) => handleCreateFolder(folder.name)}
+          ownerId={currentUser.id}
+          currentFolderId={currentFolderId}
+          lang={lang}
+        />
+      )}
+
+      {/* Move or Copy Modal */}
+      <MoveCopyModal
+        isOpen={isMoveCopyOpen}
+        onClose={() => { setIsMoveCopyOpen(false); setTargetFileIdsForModal([]); }}
+        action={moveCopyAction}
+        selectedFiles={
+          targetFileIdsForModal.length > 0
+            ? files.filter(f => targetFileIdsForModal.includes(f.id))
+            : files.filter(f => selectedFileIds.has(f.id))
+        }
+        allFolders={allFolders}
+        currentFolderId={currentFolderId}
+        onExecute={(action, targetFolderId) =>
+          handleExecuteMoveCopy(action, targetFolderId, targetFileIdsForModal)
+        }
+        onCreateFolder={handleCreateFolder}
+        lang={lang}
+      />
+
       <ShareModal
         isOpen={Boolean(shareFile)}
         onClose={() => setShareFile(null)}
@@ -910,6 +1199,7 @@ export default function App() {
         onClose={() => setIsUploadOpen(false)}
         onFilesUploaded={handleFilesUploaded}
         ownerId={currentUser.id}
+        currentFolderId={currentFolderId}
         lang={lang}
       />
     </div>

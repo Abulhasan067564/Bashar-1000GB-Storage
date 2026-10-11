@@ -140,6 +140,12 @@ export async function saveFileToFirestore(file: StorageFile): Promise<void> {
     if (file.deletedAt) {
       filePayload.deletedAt = file.deletedAt;
     }
+    if (file.folderId !== undefined) {
+      filePayload.folderId = file.folderId;
+    }
+    if (file.isFolder !== undefined) {
+      filePayload.isFolder = file.isFolder;
+    }
     if (file.dataUrl && file.dataUrl.length < 850000) {
       filePayload.dataUrl = file.dataUrl;
     }

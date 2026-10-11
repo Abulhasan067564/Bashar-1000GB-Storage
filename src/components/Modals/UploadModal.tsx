@@ -9,6 +9,7 @@ interface UploadModalProps {
   onClose: () => void;
   onFilesUploaded: (newFiles: StorageFile[]) => void;
   ownerId: string;
+  currentFolderId?: string | null;
   lang: 'bn' | 'en';
 }
 
@@ -17,6 +18,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onClose,
   onFilesUploaded,
   ownerId,
+  currentFolderId,
   lang
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -86,12 +88,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setIsUploading(true);
     setError(null);
-    const uploadedResults: StorageFile[] = [];
+    setUploadProgress(5);
 
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        setCurrentFileIndex(i);
-        const file = selectedFiles[i];
+      let completedCount = 0;
+      const processSingleFile = async (file: File, index: number): Promise<StorageFile> => {
         let dataUrl = await readFileAsDataUrl(file);
 
         if (encryptEnabled) {
@@ -101,7 +102,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         const category: FileCategory = detectFileCategory(file.name, file.type);
         const storageFile: StorageFile = {
-          id: 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          id: 'file-' + Date.now() + '-' + index + '-' + Math.random().toString(36).substring(2, 7),
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
@@ -114,11 +115,25 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           encryptionHint: encryptEnabled ? encryptionHint : undefined,
           inTrash: false,
           ownerId,
+          folderId: currentFolderId || null,
           shared: { isShared: false }
         };
 
-        uploadedResults.push(storageFile);
-        setUploadProgress(Math.round(((i + 1) / selectedFiles.length) * 100));
+        completedCount++;
+        setCurrentFileIndex(completedCount);
+        setUploadProgress(Math.round((completedCount / selectedFiles.length) * 100));
+        return storageFile;
+      };
+
+      // Fast concurrent processing in batches of 4 for speed and memory efficiency
+      const batchSize = 4;
+      const uploadedResults: StorageFile[] = [];
+      for (let i = 0; i < selectedFiles.length; i += batchSize) {
+        const currentBatch = selectedFiles.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          currentBatch.map((file, batchIdx) => processSingleFile(file, i + batchIdx))
+        );
+        uploadedResults.push(...batchResults);
       }
 
       onFilesUploaded(uploadedResults);

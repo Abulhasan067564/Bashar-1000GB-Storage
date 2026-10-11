@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAccount, StorageStats } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw } from 'lucide-react';
+import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -117,6 +117,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden md:inline">{lang === 'bn' ? 'অ্যাডমিন' : 'Admin'}</span>
             </button>
           )}
+
+          {/* YouTube Channel Button */}
+          <a
+            href="http://www.youtube.com/@BasharGojolStudio"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-white text-xs font-semibold border border-red-500/40 transition cursor-pointer shadow-sm"
+            title={lang === 'bn' ? '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸' : 'Subscribe to Bashar Gojol Studio'}
+          >
+            <Youtube className="w-3.5 h-3.5 text-red-500" />
+            <span className="hidden md:inline">Gojol Studio</span>
+          </a>
 
           {/* Cloud Sync Button */}
           {currentUser && onSyncFiles && (

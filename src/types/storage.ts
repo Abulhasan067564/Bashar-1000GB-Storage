@@ -26,6 +26,13 @@ export interface StorageFile {
   };
   tags?: string[];
   ownerId: string;
+  folderId?: string | null; // ID of parent folder if inside one, null/undefined if root
+  isFolder?: boolean; // true if this item is a folder
+}
+
+export interface ClipboardState {
+  action: 'copy' | 'move';
+  itemIds: string[];
 }
 
 export interface UserAccount {

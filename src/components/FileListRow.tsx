@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StorageFile } from '../types/storage';
 import { 
   FileText, 
@@ -16,7 +16,10 @@ import {
   Eye, 
   CheckCircle2, 
   Circle,
-  ArchiveRestore
+  ArchiveRestore,
+  Folder,
+  Move,
+  Copy
 } from 'lucide-react';
 
 interface FileListRowProps {
@@ -29,6 +32,10 @@ interface FileListRowProps {
   onDelete: (file: StorageFile) => void;
   onToggleStar: (file: StorageFile) => void;
   onRestore?: (file: StorageFile) => void;
+  onOpenFolder?: (folder: StorageFile) => void;
+  onQuickMove?: (file: StorageFile) => void;
+  onQuickCopy?: (file: StorageFile) => void;
+  onDropIntoFolder?: (draggedFileId: string, targetFolderId: string) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -43,11 +50,18 @@ export const FileListRow: React.FC<FileListRowProps> = ({
   onDelete,
   onToggleStar,
   onRestore,
+  onOpenFolder,
+  onQuickMove,
+  onQuickCopy,
+  onDropIntoFolder,
   isTrash = false,
   lang
 }) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const isFolder = Boolean(file.isFolder);
+
   const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return isFolder ? (lang === 'bn' ? 'ফোল্ডার' : 'Folder') : '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -55,6 +69,9 @@ export const FileListRow: React.FC<FileListRowProps> = ({
   };
 
   const getCategoryIcon = () => {
+    if (isFolder) {
+      return <Folder className="w-4 h-4 text-amber-400 fill-amber-400/20" />;
+    }
     switch (file.category) {
       case 'image':
         return <ImageIcon className="w-4 h-4 text-purple-400" />;
@@ -73,10 +90,59 @@ export const FileListRow: React.FC<FileListRowProps> = ({
     }
   };
 
+  const handleClickRow = () => {
+    if (isFolder) {
+      if (onOpenFolder) onOpenFolder(file);
+    } else {
+      onPreview(file);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/plain', file.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (isFolder && !isTrash) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (isFolder && !isTrash) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      const draggedId = e.dataTransfer.getData('text/plain');
+      if (draggedId && draggedId !== file.id && onDropIntoFolder) {
+        onDropIntoFolder(draggedId, file.id);
+      }
+    }
+  };
+
   return (
     <tr
-      onClick={() => onPreview(file)}
-      className={`group border-b border-slate-800/80 hover:bg-slate-800/60 cursor-pointer transition ${isSelected ? 'bg-cyan-950/20' : ''}`}
+      onClick={handleClickRow}
+      draggable={!isFolder && !isTrash}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`group border-b border-slate-800/80 hover:bg-slate-800/60 cursor-pointer transition ${
+        isSelected
+          ? 'bg-cyan-950/20'
+          : isDragOver
+            ? 'bg-amber-950/40 ring-1 ring-amber-400'
+            : isFolder
+              ? 'bg-slate-900/40'
+              : ''
+      }`}
     >
       {/* Select */}
       <td className="py-3 px-4 w-10" onClick={(e) => e.stopPropagation()}>
@@ -96,12 +162,19 @@ export const FileListRow: React.FC<FileListRowProps> = ({
       {/* Name & Icon */}
       <td className="py-3 px-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-slate-950 border border-slate-800 shrink-0">
+          <div className={`p-2 rounded-lg border shrink-0 ${isFolder ? 'bg-amber-950/30 border-amber-500/30' : 'bg-slate-950 border-slate-800'}`}>
             {getCategoryIcon()}
           </div>
           <div className="truncate max-w-xs sm:max-w-md">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold text-slate-200 truncate">{file.name}</span>
+              <span className={`text-xs font-semibold truncate ${isFolder ? 'text-amber-200 font-bold' : 'text-slate-200'}`}>
+                {file.name}
+              </span>
+              {isFolder && (
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/30">
+                  {lang === 'bn' ? 'ফোল্ডার' : 'FOLDER'}
+                </span>
+              )}
               {file.isEncrypted && (
                 <span title="Encrypted Vault">
                   <Lock className="w-3 h-3 text-amber-400 shrink-0" />
@@ -113,7 +186,9 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-slate-500 uppercase font-mono">{file.category}</span>
+            <span className="text-[10px] text-slate-500 uppercase font-mono">
+              {isFolder ? (lang === 'bn' ? 'ডিরেক্টরি' : 'DIRECTORY') : file.category}
+            </span>
           </div>
         </div>
       </td>
@@ -133,38 +208,67 @@ export const FileListRow: React.FC<FileListRowProps> = ({
         <div className="flex items-center justify-end gap-1">
           {!isTrash ? (
             <>
-              <button
-                type="button"
-                onClick={() => onToggleStar(file)}
-                className={`p-1.5 rounded-lg transition ${file.isStarred ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
-                title="Star"
-              >
-                <Star className={`w-3.5 h-3.5 ${file.isStarred ? 'fill-amber-400' : ''}`} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onPreview(file)}
-                className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition"
-                title="Preview"
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onShare(file)}
-                className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition"
-                title="Share"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDownload(file)}
-                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition"
-                title="Download"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
+              {/* Move */}
+              {onQuickMove && (
+                <button
+                  type="button"
+                  onClick={() => onQuickMove(file)}
+                  className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg transition"
+                  title={lang === 'bn' ? 'মুভ করুন' : 'Move to folder'}
+                >
+                  <Move className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Copy */}
+              {onQuickCopy && (
+                <button
+                  type="button"
+                  onClick={() => onQuickCopy(file)}
+                  className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition"
+                  title={lang === 'bn' ? 'কপি করুন' : 'Copy'}
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {!isFolder && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onToggleStar(file)}
+                    className={`p-1.5 rounded-lg transition ${file.isStarred ? 'text-amber-400' : 'text-slate-500 hover:text-amber-400'}`}
+                    title="Star"
+                  >
+                    <Star className={`w-3.5 h-3.5 ${file.isStarred ? 'fill-amber-400' : ''}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPreview(file)}
+                    className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition"
+                    title="Preview"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onShare(file)}
+                    className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition"
+                    title="Share"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDownload(file)}
+                    className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition"
+                    title="Download"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
                 onClick={() => onDelete(file)}

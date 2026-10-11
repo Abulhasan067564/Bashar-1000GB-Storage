@@ -24,6 +24,7 @@ import {
   Trash2,
   ShieldCheck
 } from 'lucide-react';
+import { YouTubeBanner } from './YouTubeBanner';
 
 interface AuthScreenProps {
   usersList: UserAccount[];
@@ -265,6 +266,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </button>
         </div>
       </header>
+
+      {/* YouTube Channel Promo Banner */}
+      <YouTubeBanner lang={lang} />
 
       {/* Main Container */}
       <main className="relative z-10 flex-1 flex flex-col lg:flex-row items-center justify-center p-6 gap-8 max-w-6xl mx-auto w-full">
