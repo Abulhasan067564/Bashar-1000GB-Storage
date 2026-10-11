@@ -110,7 +110,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-slate-400">
                 <span>User: <strong className="text-slate-200">{adminCredentials.username}</strong></span>
-                <span>Pass: <strong className="text-slate-200">{adminCredentials.passwordHash}</strong></span>
+                <span>Pass: <strong className="text-slate-200">••••••••</strong></span>
               </div>
               <button
                 type="button"
