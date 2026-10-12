@@ -156,8 +156,44 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
+const STORAGE_DELETED_USERS_KEY = 'bashar_deleted_user_ids';
+
+export function getDeletedUserIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_DELETED_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordDeletedUserId(userId: string): void {
+  try {
+    const list = getDeletedUserIds();
+    if (!list.includes(userId)) {
+      list.push(userId);
+      localStorage.setItem(STORAGE_DELETED_USERS_KEY, JSON.stringify(list));
+    }
+  } catch (err) {
+    console.warn('Could not record deleted user id:', err);
+  }
+}
+
+export function removeDeletedUserId(userId: string): void {
+  try {
+    const list = getDeletedUserIds().filter(id => id !== userId);
+    localStorage.setItem(STORAGE_DELETED_USERS_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.warn('Could not remove deleted user id:', err);
+  }
+}
+
 // Save or update user to Firestore
 export async function saveUserToFirestore(user: UserAccount): Promise<void> {
+  const deletedIds = getDeletedUserIds();
+  if (deletedIds.includes(user.id)) {
+    return;
+  }
   if (quotaExceededState) return;
   const path = `users/${user.id}`;
   try {
@@ -191,8 +227,15 @@ export async function loadUsersFromFirestore(): Promise<UserAccount[]> {
   try {
     const snapshot = await getDocs(collection(db, path));
     const list: UserAccount[] = [];
+    const deletedIds = new Set(getDeletedUserIds());
     snapshot.forEach((d) => {
-      list.push(d.data() as UserAccount);
+      const u = d.data() as UserAccount;
+      if (u && u.id && !deletedIds.has(u.id)) {
+        list.push(u);
+      } else if (u && u.id && deletedIds.has(u.id)) {
+        // Asynchronously clean up lingering deleted doc from Firestore
+        deleteDoc(doc(db, 'users', u.id)).catch(() => {});
+      }
     });
     return list;
   } catch (error) {
@@ -205,9 +248,10 @@ export async function loadUsersFromFirestore(): Promise<UserAccount[]> {
   }
 }
 
-// Delete user from Firestore
+// Delete user from Firestore permanently
 export async function deleteUserFromFirestore(userId: string): Promise<void> {
-  if (quotaExceededState) return;
+  // Always register in persistent tombstone so account is never resurrected
+  recordDeletedUserId(userId);
   const path = `users/${userId}`;
   try {
     await deleteDoc(doc(db, 'users', userId));
@@ -216,7 +260,7 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
       setQuotaExceeded(true);
       return;
     }
-    handleFirestoreError(error, OperationType.DELETE, path);
+    console.warn('Firestore user delete notice:', error);
   }
 }
 

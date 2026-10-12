@@ -21,7 +21,7 @@ interface ProfileModalProps {
   onClose: () => void;
   currentUser: UserAccount;
   onUpdateUser: (updatedUser: UserAccount) => void;
-  onDeleteAccount: () => void;
+  onDeleteAccount: () => void | Promise<void>;
   lang: 'bn' | 'en';
 }
 
@@ -60,6 +60,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   
   const [error, setError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -574,20 +575,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    disabled={isDeleting}
                     onClick={() => setIsConfirmingDelete(false)}
-                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer"
                   >
                     {lang === 'bn' ? 'না, বাতিল' : 'Cancel'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsConfirmingDelete(false);
-                      onDeleteAccount();
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      setIsDeleting(true);
+                      setError(null);
+                      try {
+                        await onDeleteAccount();
+                      } catch (err) {
+                        setIsDeleting(false);
+                        setIsConfirmingDelete(false);
+                        setError(lang === 'bn' ? 'অ্যাকাউন্ট ডিলিট করতে সমস্যা হয়েছে।' : 'Failed to delete account.');
+                      }
                     }}
-                    className="flex-1 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-md transition cursor-pointer"
+                    className="flex-1 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white rounded-lg text-xs font-bold shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    {lang === 'bn' ? 'হ্যাঁ, স্থায়ীভাবে মুছুন' : 'Confirm Delete'}
+                    {isDeleting ? (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>{lang === 'bn' ? 'মুছে ফেলা হচ্ছে...' : 'Deleting...'}</span>
+                      </>
+                    ) : (
+                      <span>{lang === 'bn' ? 'হ্যাঁ, স্থায়ীভাবে মুছুন' : 'Confirm Delete'}</span>
+                    )}
                   </button>
                 </div>
               </div>

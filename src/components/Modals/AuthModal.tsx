@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserAccount } from '../../types/storage';
 import { Lock, User, KeyRound, HelpCircle, CheckCircle2, AlertCircle, X, Sparkles, Calendar } from 'lucide-react';
 import { isSameEmailOrPhone } from '../../utils/accountValidation';
+import { removeDeletedUserId } from '../../services/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -84,6 +85,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       createdAt: new Date().toISOString()
     };
 
+    removeDeletedUserId(newUser.id);
     const updated = [...usersList, newUser];
     onUpdateUsersList(updated);
     onLoginSuccess(newUser);

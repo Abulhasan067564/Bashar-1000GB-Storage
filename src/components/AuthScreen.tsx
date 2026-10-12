@@ -6,6 +6,7 @@ import {
   isPhoneNumber, 
   getNormalizedAccountIdentifier 
 } from '../utils/accountValidation';
+import { removeDeletedUserId } from '../services/firebase';
 import { 
   Cloud, 
   User, 
@@ -177,6 +178,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       createdAt: new Date().toISOString()
     };
 
+    removeDeletedUserId(newUser.id);
     const updated = [...usersList, newUser];
     onUpdateUsersList(updated);
     onLoginSuccess(newUser);

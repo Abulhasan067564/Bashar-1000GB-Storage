@@ -30,8 +30,11 @@ import {
   saveAdminCredentialsToFirestore,
   loadAdminCredentialsFromFirestore,
   isQuotaExceeded,
-  subscribeQuotaExceeded
+  subscribeQuotaExceeded,
+  getDeletedUserIds,
+  recordDeletedUserId
 } from './services/firebase';
+import { isSameEmailOrPhone } from './utils/accountValidation';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -197,13 +200,14 @@ export default function App() {
     async function initCloudDb() {
       await testConnection();
       try {
-        // Sync users
+        // Sync users (excluding deleted accounts)
         const cloudUsers = await loadUsersFromFirestore();
         if (cloudUsers.length > 0) {
           setUsersList(prev => {
             const map = new Map<string, UserAccount>();
-            prev.forEach(u => map.set(u.id, u));
-            cloudUsers.forEach(u => map.set(u.id, u));
+            const deletedIds = new Set(getDeletedUserIds());
+            prev.filter(u => !deletedIds.has(u.id)).forEach(u => map.set(u.id, u));
+            cloudUsers.filter(u => !deletedIds.has(u.id)).forEach(u => map.set(u.id, u));
             const merged = Array.from(map.values());
             localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(merged));
             return merged;
@@ -260,6 +264,7 @@ export default function App() {
 
   // Delete user by Admin
   const handleDeleteUserByAdmin = async (userId: string) => {
+    recordDeletedUserId(userId);
     try {
       const allFiles = await getAllStoredFiles();
       const userFileIds = allFiles.filter(f => f.ownerId === userId).map(f => f.id);
@@ -279,6 +284,10 @@ export default function App() {
     if (currentUser && currentUser.id === userId) {
       setCurrentUser(null);
       localStorage.removeItem(STORAGE_SESSION_KEY);
+      sessionStorage.removeItem(STORAGE_SESSION_KEY);
+      setFiles([]);
+      setSelectedFileIds(new Set());
+      setIsProfileOpen(false);
     }
   };
 
@@ -286,12 +295,17 @@ export default function App() {
   const handleRefreshAdminData = async () => {
     try {
       const cloudUsers = await loadUsersFromFirestore();
-      if (cloudUsers.length > 0) {
+      const deletedIds = new Set(getDeletedUserIds());
+      const filteredUsers = cloudUsers.filter(u => !deletedIds.has(u.id));
+      if (filteredUsers.length > 0) {
         const map = new Map<string, UserAccount>();
-        cloudUsers.forEach(u => map.set(u.id, u));
+        filteredUsers.forEach(u => map.set(u.id, u));
         const merged = Array.from(map.values());
         setUsersList(merged);
         localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(merged));
+      } else {
+        setUsersList([]);
+        localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify([]));
       }
       const cloudAdmin = await loadAdminCredentialsFromFirestore();
       if (cloudAdmin) {
@@ -424,11 +438,17 @@ export default function App() {
   const handleDeleteAccount = async () => {
     if (!currentUser) return;
     const uid = currentUser.id;
+    const userEmailOrPhone = currentUser.emailOrPhone;
 
-    // 1. Delete all user files from IndexedDB and Firestore
+    // 1. Immediately register tombstone to prevent resurrection
+    recordDeletedUserId(uid);
+
+    // 2. Delete all user files from IndexedDB and Firestore
     try {
       const allFiles = await getAllStoredFiles();
-      const userFileIds = allFiles.filter(f => f.ownerId === uid).map(f => f.id);
+      const userFileIds = allFiles
+        .filter(f => !f.ownerId || f.ownerId === uid || f.ownerId === 'default')
+        .map(f => f.id);
       if (userFileIds.length > 0) {
         await deleteMultipleStoredFiles(userFileIds);
         userFileIds.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
@@ -437,13 +457,19 @@ export default function App() {
       console.error('Error removing user files:', err);
     }
 
-    // 2. Remove user from registered users and Firestore
-    deleteUserFromFirestore(uid).catch(() => {});
-    const updatedUsers = usersList.filter(u => u.id !== uid);
-    handleUpdateUsersList(updatedUsers);
+    // 3. Delete user document from Firestore permanently
+    await deleteUserFromFirestore(uid);
 
-    // 3. Clear session and state
+    // 4. Remove user from registered users in localStorage and state
+    const updatedUsers = usersList.filter(
+      u => u.id !== uid && !isSameEmailOrPhone(u.emailOrPhone, userEmailOrPhone)
+    );
+    setUsersList(updatedUsers);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+
+    // 5. Completely wipe active user session and state
     localStorage.removeItem(STORAGE_SESSION_KEY);
+    sessionStorage.removeItem(STORAGE_SESSION_KEY);
     setCurrentUser(null);
     setFiles([]);
     setSelectedFileIds(new Set());
@@ -451,8 +477,8 @@ export default function App() {
 
     showToast(
       lang === 'bn'
-        ? 'আপনার একাউন্ট এবং সমস্ত ফাইল সফলভাবে মুছে ফেলা হয়েছে।'
-        : 'Your account and all files have been deleted.'
+        ? 'আপনার অ্যাকাউন্ট এবং সমস্ত ফাইল স্থায়ীভাবে মুছে ফেলা হয়েছে।'
+        : 'Your account and all files have been permanently deleted.'
     );
   };
 
