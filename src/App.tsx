@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   StorageFile, 
   UserAccount, 
@@ -176,6 +176,7 @@ export default function App() {
   const [isZipping, setIsZipping] = useState(false);
   const [isSyncingFiles, setIsSyncingFiles] = useState(false);
   const [isDragOverWindow, setIsDragOverWindow] = useState(false);
+  const mainDragCounterRef = useRef<number>(0);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [quotaExceeded, setQuotaExceededState] = useState(isQuotaExceeded());
   const [isQuotaDismissed, setIsQuotaDismissed] = useState(false);
@@ -979,11 +980,13 @@ export default function App() {
     try {
       await saveMultipleStoredFiles(enrichedFiles);
     } catch (err) {
-      console.error('Storage persistence notice:', err);
+      console.warn('Storage persistence notice:', err);
     }
 
-    // 3. Background sync to Firestore Cloud
-    saveMultipleFilesToFirestore(enrichedFiles).catch(err => console.error('Firestore batch error:', err));
+    // 3. Background sync to Firestore Cloud (only when quota permits)
+    if (!isQuotaExceeded()) {
+      saveMultipleFilesToFirestore(enrichedFiles).catch(() => {});
+    }
 
     showToast(
       lang === 'bn' 
@@ -996,6 +999,7 @@ export default function App() {
   const handleDirectDropFiles = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    mainDragCounterRef.current = 0;
     setIsDragOverWindow(false);
     if (!currentUser) return;
     const droppedFiles = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
@@ -1050,7 +1054,15 @@ export default function App() {
         });
       };
 
-      const results = await Promise.all(droppedFiles.map((f, i) => readSingle(f, i)));
+      const results: StorageFile[] = [];
+      const BATCH_SIZE = 2;
+      for (let i = 0; i < droppedFiles.length; i += BATCH_SIZE) {
+        const batch = droppedFiles.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map((f, bi) => readSingle(f, i + bi)));
+        results.push(...batchResults);
+        await new Promise(resolve => setTimeout(resolve, 16));
+      }
+
       await handleFilesUploaded(results);
     } catch (err) {
       console.error(err);
@@ -1180,17 +1192,37 @@ export default function App() {
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}
         <main 
-          onDragOver={(e) => { e.preventDefault(); setIsDragOverWindow(true); }}
-          onDragLeave={(e) => {
-            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-            setIsDragOverWindow(false);
+          onDragEnter={(e) => {
+            e.preventDefault();
+            if (isUploadOpen) return;
+            mainDragCounterRef.current += 1;
+            if (e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+              setIsDragOverWindow(true);
+            }
           }}
-          onDrop={handleDirectDropFiles}
+          onDragOver={(e) => {
+            e.preventDefault();
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            mainDragCounterRef.current -= 1;
+            if (mainDragCounterRef.current <= 0) {
+              mainDragCounterRef.current = 0;
+              setIsDragOverWindow(false);
+            }
+          }}
+          onDrop={(e) => {
+            mainDragCounterRef.current = 0;
+            setIsDragOverWindow(false);
+            if (!isUploadOpen) {
+              handleDirectDropFiles(e);
+            }
+          }}
           className="flex-1 flex flex-col min-w-0 bg-slate-950/50 overflow-y-auto relative"
         >
           {/* Turbo Drag & Drop Overlay */}
-          {isDragOverWindow && (
-            <div className="absolute inset-0 z-40 bg-cyan-950/85 backdrop-blur-md border-4 border-dashed border-cyan-400 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+          {isDragOverWindow && !isUploadOpen && (
+            <div className="absolute inset-0 z-40 bg-cyan-950/85 backdrop-blur-md border-4 border-dashed border-cyan-400 flex flex-col items-center justify-center p-6 text-center animate-in fade-in pointer-events-none">
               <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center mb-3 animate-bounce shadow-lg shadow-cyan-500/30">
                 <Zap className="w-9 h-9 fill-cyan-400 text-cyan-300" />
               </div>

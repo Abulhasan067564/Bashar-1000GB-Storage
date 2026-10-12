@@ -32,55 +32,42 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // High-speed RAM cache to pre-load files the millisecond they are selected
-  const preloadedCacheRef = useRef<Map<File, string>>(new Map());
+  const modalDragCounter = useRef<number>(0);
 
   if (!isOpen) return null;
 
   const readFileAsDataUrl = (file: File): Promise<string> => {
-    // Return preloaded cache if available
-    const cached = preloadedCacheRef.current.get(file);
-    if (cached) return Promise.resolve(cached);
-
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        preloadedCacheRef.current.set(file, result);
-        resolve(result);
-      };
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(file);
-    });
-  };
-
-  // Pre-load files in background the moment they are selected or dropped
-  const preloadFiles = (files: File[]) => {
-    files.forEach(file => {
-      if (!preloadedCacheRef.current.has(file)) {
-        readFileAsDataUrl(file).catch(() => {});
-      }
     });
   };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    if (e.type === 'dragenter') {
+      modalDragCounter.current += 1;
       setDragActive(true);
     } else if (e.type === 'dragleave') {
-      setDragActive(false);
+      modalDragCounter.current -= 1;
+      if (modalDragCounter.current <= 0) {
+        modalDragCounter.current = 0;
+        setDragActive(false);
+      }
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    modalDragCounter.current = 0;
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const filesArray = Array.from(e.dataTransfer.files);
       setSelectedFiles(prev => [...prev, ...filesArray]);
-      preloadFiles(filesArray);
     }
   };
 
@@ -88,7 +75,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     if (e.target.files && e.target.files.length > 0) {
       const filesArray = Array.from(e.target.files);
       setSelectedFiles(prev => [...prev, ...filesArray]);
-      preloadFiles(filesArray);
+      e.target.value = '';
     }
   };
 
@@ -109,7 +96,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     setIsUploading(true);
     setError(null);
-    setUploadProgress(10);
+    setUploadProgress(5);
 
     try {
       let completedCount = 0;
@@ -142,13 +129,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
         completedCount++;
         setCurrentFileIndex(completedCount);
-        setUploadProgress(Math.min(99, Math.round((completedCount / selectedFiles.length) * 100)));
+        setUploadProgress(Math.min(95, Math.round((completedCount / selectedFiles.length) * 90) + 5));
         return storageFile;
       };
 
-      // Turbo parallel processing: process all selected files concurrently
-      // with a high-throughput concurrency batch of 16 files for near-instant execution
-      const BATCH_SIZE = 16;
+      // Smooth chunking (2 files at a time) with animation frame yield to keep UI totally fluid and responsive
+      const BATCH_SIZE = 2;
       const uploadedResults: StorageFile[] = [];
       for (let i = 0; i < selectedFiles.length; i += BATCH_SIZE) {
         const currentBatch = selectedFiles.slice(i, i + BATCH_SIZE);
@@ -156,9 +142,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           currentBatch.map((file, batchIdx) => processSingleFile(file, i + batchIdx))
         );
         uploadedResults.push(...batchResults);
+        // Micro-yield so the browser updates animations, progress bar, and never freezes
+        await new Promise(resolve => setTimeout(resolve, 16));
       }
 
-      setUploadProgress(95);
+      setUploadProgress(98);
       await Promise.resolve(onFilesUploaded(uploadedResults));
       setUploadProgress(100);
       setIsUploading(false);
@@ -226,13 +214,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
               onChange={handleFileChange}
               className="hidden"
             />
-            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 mb-2">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 mb-2 pointer-events-none">
               <FileUp className="w-6 h-6" />
             </div>
-            <p className="text-sm font-semibold text-slate-200">
+            <p className="text-sm font-semibold text-slate-200 pointer-events-none">
               {lang === 'bn' ? 'এখানে ফাইল ড্রপ করুন অথবা ব্রাউজ করুন' : 'Drop files here or click to browse'}
             </p>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1 pointer-events-none">
               {lang === 'bn' ? 'ছবি, ভিডিও, অডিও, পিডিএফ, জিপ, কোড ইত্যাদি যেকোনো ফাইল' : 'Images, Videos, Audio, PDF, ZIP, Code & all formats'}
             </p>
           </div>

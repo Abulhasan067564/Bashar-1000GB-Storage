@@ -25,27 +25,23 @@ export function getStoredFilesBackup(): StorageFile[] {
 
 export function saveStoredFilesBackup(files: StorageFile[]): void {
   try {
-    const json = JSON.stringify(files);
-    // Safe standard LocalStorage threshold (~3.5 MB)
-    if (json.length < 3500000) {
-      localStorage.setItem(STORAGE_FILES_BACKUP_KEY, json);
-      return;
-    }
-  } catch {}
-
-  // If payload exceeds quota or throws, preserve all file metadata + small dataUrls
-  try {
+    // Keep all file metadata and lightweight text (<8KB) in localStorage backup
+    // Full heavy binary dataUrl is saved asynchronously in IndexedDB without freezing UI
     const lightweightFiles = files.map(f => {
-      if (f.dataUrl && f.dataUrl.length > 50000) {
-        // Strip huge binary dataUrl for localStorage backup (full binary is preserved in IndexedDB)
+      if (f.dataUrl && f.dataUrl.length > 8192) {
         const { dataUrl, ...rest } = f;
         return rest;
       }
       return f;
     });
     localStorage.setItem(STORAGE_FILES_BACKUP_KEY, JSON.stringify(lightweightFiles));
-  } catch (err) {
-    console.warn('LocalStorage backup quota reached, IndexedDB is active:', err);
+  } catch {
+    try {
+      const metaOnly = files.map(({ dataUrl, ...rest }) => rest);
+      localStorage.setItem(STORAGE_FILES_BACKUP_KEY, JSON.stringify(metaOnly));
+    } catch {
+      // IndexedDB has all full files safely
+    }
   }
 }
 
