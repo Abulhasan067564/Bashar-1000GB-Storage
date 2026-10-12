@@ -44,9 +44,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [name, setName] = useState(currentUser.name || '');
   const [birthDate, setBirthDate] = useState(currentUser.birthDate || '');
   const [customLogo, setCustomLogo] = useState(currentUser.customLogo || '');
+  
+  // Password change state
+  const [verificationMode, setVerificationMode] = useState<'old_password' | 'secret_name'>('old_password');
+  const [oldPassword, setOldPassword] = useState('');
+  const [enteredSecretName, setEnteredSecretName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -73,19 +80,68 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
     if (!name.trim()) {
       setError(lang === 'bn' ? 'নাম খালি রাখা যাবে না।' : 'Name cannot be empty.');
       return;
     }
 
-    if (newPassword.trim()) {
+    // If attempting to change password
+    if (newPassword.trim() || oldPassword.trim() || enteredSecretName.trim()) {
+      if (!newPassword.trim()) {
+        setError(lang === 'bn' ? 'অনুগ্রহ করে নতুন পাসওয়ার্ড লিখুন।' : 'Please enter a new password.');
+        return;
+      }
+
       if (newPassword.trim().length < 4) {
         setError(lang === 'bn' ? 'পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের হতে হবে।' : 'Password must be at least 4 characters.');
         return;
       }
+
       if (newPassword !== confirmPassword) {
         setError(lang === 'bn' ? 'পাসওয়ার্ড দুটি মেলেনি! নিশ্চিতকরণ পাসওয়ার্ড চেক করুন।' : 'Passwords do not match! Please check confirmation.');
         return;
+      }
+
+      // Verification: must match either old password OR secret name
+      if (verificationMode === 'old_password') {
+        if (!oldPassword.trim()) {
+          setError(
+            lang === 'bn'
+              ? 'পাসওয়ার্ড পরিবর্তন করতে আগের পাসওয়ার্ড দিন, অথবা সিক্রেট নাম দিয়ে পরিবর্তন করুন।'
+              : 'Please enter your previous password, or switch to Secret Name verification.'
+          );
+          return;
+        }
+
+        if (currentUser.passwordHash && oldPassword.trim() !== currentUser.passwordHash) {
+          setError(
+            lang === 'bn'
+              ? 'আগের পাসওয়ার্ড সঠিক নয়! সঠিক আগের পাসওয়ার্ড দিন অথবা সিক্রেট নাম দিয়ে পাসওয়ার্ড পরিবর্তন করুন।'
+              : 'Previous password is incorrect! Enter correct password or verify with your Secret Name.'
+          );
+          return;
+        }
+      } else {
+        // secret_name mode
+        if (!enteredSecretName.trim()) {
+          setError(
+            lang === 'bn'
+              ? 'পাসওয়ার্ড পরিবর্তন করতে আপনার সিক্রেট নাম লিখুন।'
+              : 'Please enter your secret name to change password.'
+          );
+          return;
+        }
+
+        if (enteredSecretName.trim().toLowerCase() !== currentUser.secretName.trim().toLowerCase()) {
+          setError(
+            lang === 'bn'
+              ? 'সিক্রেট নাম সঠিক নয়! একাউন্ট তৈরির সময় দেওয়া সঠিক সিক্রেট নাম লিখুন।'
+              : 'Secret name does not match! Please enter the correct secret name.'
+          );
+          return;
+        }
       }
     }
 
@@ -241,31 +297,106 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
-          {/* PASSWORD UPDATE SECTION (পাসওয়ার্ড আবার পরিবর্তন করতে পারবে) */}
-          <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+          {/* PASSWORD UPDATE SECTION (পাসওয়ার্ড আগের পাসওয়ার্ড বা সিক্রেট নাম দিয়ে পরিবর্তন করতে পারবে) */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold">
                 <KeyRound className="w-4 h-4" />
-                <span>{lang === 'bn' ? 'পাসওয়ার্ড সেট বা পরিবর্তন করুন' : 'Set or Change Password'}</span>
+                <span>{lang === 'bn' ? 'পাসওয়ার্ড পরিবর্তন করুন' : 'Change Password'}</span>
               </div>
               <span className="text-[10px] text-slate-500">
-                {lang === 'bn' ? '(ঐচ্ছিক)' : '(Optional)'}
+                {lang === 'bn' ? '(প্রয়োজন হলে)' : '(Optional)'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-tight">
+
+            <p className="text-[11px] text-slate-400 leading-relaxed">
               {lang === 'bn' 
-                ? 'আপনার একাউন্টের পাসওয়ার্ড পরিবর্তন করতে চাইলে এখানে নতুন পাসওয়ার্ড লিখুন।' 
-                : 'Enter a new password here if you wish to set or update your account password.'}
+                ? 'পাসওয়ার্ড পরিবর্তন করতে আগের পাসওয়ার্ড দিতে হবে, অন্যথায় সিক্রেট নাম দিয়ে যাচাই করতে হবে।' 
+                : 'To change password, enter your previous password or verify with your secret name.'}
             </p>
 
-            <div className="space-y-2">
+            {/* Verification Mode Selector */}
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setVerificationMode('old_password')}
+                className={`py-1.5 px-2 rounded-lg font-semibold transition text-center ${
+                  verificationMode === 'old_password'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                🔑 {lang === 'bn' ? 'আগের পাসওয়ার্ড দিয়ে' : 'With Old Password'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVerificationMode('secret_name')}
+                className={`py-1.5 px-2 rounded-lg font-semibold transition text-center ${
+                  verificationMode === 'secret_name'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                🛡️ {lang === 'bn' ? 'সিক্রেট নাম দিয়ে' : 'With Secret Name'}
+              </button>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              {/* Verification Input depending on mode */}
+              {verificationMode === 'old_password' ? (
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-300">
+                      {lang === 'bn' ? 'বর্তমান / আগের পাসওয়ার্ড' : 'Current / Old Password'}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setVerificationMode('secret_name')}
+                      className="text-[10px] text-cyan-400 hover:underline"
+                    >
+                      {lang === 'bn' ? 'মনে নেই? সিক্রেট নাম দিন' : 'Forgot? Use Secret Name'}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showOldPassword ? 'text' : 'password'}
+                      value={oldPassword}
+                      onChange={e => setOldPassword(e.target.value)}
+                      placeholder={lang === 'bn' ? 'আপনার আগের পাসওয়ার্ড লিখুন' : 'Enter your old password'}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none pr-8"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowOldPassword(p => !p)}
+                      className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300"
+                    >
+                      {showOldPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    {lang === 'bn' ? 'অ্যাকাউন্টের সিক্রেট নাম (Secret Name)' : 'Account Secret Name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={enteredSecretName}
+                    onChange={e => setEnteredSecretName(e.target.value)}
+                    placeholder={lang === 'bn' ? 'অ্যাকাউন্ট খোলার সময় দেওয়া সিক্রেট নাম' : 'Enter your registered secret name'}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* New Password Field */}
               <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
                   {lang === 'bn' ? 'নতুন পাসওয়ার্ড' : 'New Password'}
                 </label>
                 <div className="relative">
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    type={showNewPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
                     placeholder={lang === 'bn' ? 'নতুন পাসওয়ার্ড দিন (ন্যূনতম ৪ অক্ষর)' : 'Enter new password (min 4 chars)'}
@@ -273,21 +404,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(p => !p)}
+                    onClick={() => setShowNewPassword(p => !p)}
                     className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300"
                   >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
 
+              {/* Confirm New Password Field */}
               {newPassword.length > 0 && (
                 <div className="animate-in fade-in">
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
                     {lang === 'bn' ? 'নতুন পাসওয়ার্ড নিশ্চিত করুন' : 'Confirm New Password'}
                   </label>
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    type={showNewPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     placeholder={lang === 'bn' ? 'আবার নতুন পাসওয়ার্ড লিখুন' : 'Re-type new password'}
@@ -304,9 +436,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <span>{lang === 'bn' ? 'ইমেইল/নম্বর:' : 'Email/Phone:'}</span>
               <span className="text-slate-200 font-mono">{currentUser.emailOrPhone}</span>
             </div>
-            <div className="flex justify-between">
-              <span>{lang === 'bn' ? 'সিক্রেট নাম:' : 'Secret Name:'}</span>
-              <span className="text-cyan-400 font-mono">{currentUser.secretName}</span>
+            <div className="flex justify-between items-center">
+              <span>{lang === 'bn' ? 'সিক্রেট নাম স্থিতি:' : 'Secret Name Status:'}</span>
+              <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                {lang === 'bn' ? 'সুরক্ষিত (পাসওয়ার্ড পরিবর্তনে ব্যবহারযোগ্য)' : 'Protected (usable for reset)'}
+              </span>
             </div>
           </div>
 
