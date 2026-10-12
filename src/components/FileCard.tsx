@@ -297,7 +297,7 @@ export const FileCard: React.FC<FileCardProps> = ({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onDelete(file); }}
                 className="p-1.5 hover:text-red-400 rounded-lg hover:bg-slate-800 transition"
-                title={lang === 'bn' ? 'মুছে ফেলুন' : 'Delete'}
+                title={lang === 'bn' ? 'রিসাইকেল বিনে পাঠান' : 'Move to Recycle Bin'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -318,7 +318,7 @@ export const FileCard: React.FC<FileCardProps> = ({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onDelete(file); }}
                 className="p-1.5 text-red-400 hover:text-red-300 rounded-lg hover:bg-slate-800 transition"
-                title={lang === 'bn' ? 'স্থায়ীভাবে ডিলিট' : 'Purge Permanently'}
+                title={lang === 'bn' ? 'সারা জীবনের জন্য ডিলিট (স্থায়ীভাবে)' : 'Delete permanently forever'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

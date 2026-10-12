@@ -44,6 +44,7 @@ interface ActionBarProps {
   onNavigateUpFolder: () => void;
   onEmptyTrash?: () => void;
   onRestoreAllTrash?: () => void;
+  onBatchRestoreTrash?: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   selectedCategory: FileCategory | 'all';
@@ -74,6 +75,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onNavigateUpFolder,
   onEmptyTrash,
   onRestoreAllTrash,
+  onBatchRestoreTrash,
   viewMode,
   onViewModeChange,
   selectedCategory,
@@ -288,41 +290,67 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             </button>
           )}
 
-          {/* BULK DELETE */}
+          {/* BULK DELETE / TRASH ACTIONS */}
           {!isTrashTab ? (
             <button
               onClick={onBatchDelete}
               disabled={selectedCount === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-bold border border-red-800/60 transition disabled:opacity-40 cursor-pointer"
-              title={lang === 'bn' ? 'নির্বাচিত ফাইল রিসাইকেল বিনে পাঠান' : 'Batch delete selected files'}
+              title={lang === 'bn' ? 'নির্বাচিত ফাইল রিসাইকেল বিনে পাঠান' : 'Move selected files to Recycle Bin'}
             >
               <Trash2 className="w-3.5 h-3.5 text-red-400" />
               <span>
                 {selectedCount > 0
-                  ? (lang === 'bn' ? `ডিলিট (${selectedCount})` : `Delete (${selectedCount})`)
-                  : (lang === 'bn' ? 'ডিলিট' : 'Batch Delete')}
+                  ? (lang === 'bn' ? `রিসাইকেল বিনে পাঠান (${selectedCount})` : `Move to Bin (${selectedCount})`)
+                  : (lang === 'bn' ? 'রিসাইকেল বিনে পাঠান' : 'Move to Bin')}
               </span>
             </button>
           ) : (
             /* Trash Actions */
             <div className="flex gap-2">
-              <button
-                onClick={onRestoreAllTrash}
-                disabled={totalFilteredFiles === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 text-xs font-bold border border-emerald-800/60 transition disabled:opacity-40 cursor-pointer"
-              >
-                <ArchiveRestore className="w-3.5 h-3.5" />
-                <span>{lang === 'bn' ? 'সব রিস্টোর করুন' : 'Restore All'}</span>
-              </button>
+              {selectedCount > 0 ? (
+                <>
+                  <button
+                    onClick={onBatchRestoreTrash}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 text-xs font-bold border border-emerald-700/60 transition cursor-pointer"
+                    title={lang === 'bn' ? 'নির্বাচিত ফাইল রিস্টোর করুন' : 'Restore selected files'}
+                  >
+                    <ArchiveRestore className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? `রিস্টোর (${selectedCount})` : `Restore (${selectedCount})`}</span>
+                  </button>
 
-              <button
-                onClick={onEmptyTrash}
-                disabled={totalFilteredFiles === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-800 transition disabled:opacity-40 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{lang === 'bn' ? 'ট্র্যাশ খালি করুন' : 'Empty Trash'}</span>
-              </button>
+                  <button
+                    onClick={onBatchDelete}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-800 transition cursor-pointer"
+                    title={lang === 'bn' ? 'নির্বাচিত ফাইল সারা জীবনের জন্য স্থায়ীভাবে মুছে ফেলুন' : 'Permanently delete selected files forever'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? `সারা জীবনের জন্য ডিলিট (${selectedCount})` : `Delete Forever (${selectedCount})`}</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={onRestoreAllTrash}
+                    disabled={totalFilteredFiles === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 text-xs font-bold border border-emerald-800/60 transition disabled:opacity-40 cursor-pointer"
+                    title={lang === 'bn' ? 'সব ফাইল ড্রাইভটিতে রিস্টোর করুন' : 'Restore all files'}
+                  >
+                    <ArchiveRestore className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? 'সব রিস্টোর করুন' : 'Restore All'}</span>
+                  </button>
+
+                  <button
+                    onClick={onEmptyTrash}
+                    disabled={totalFilteredFiles === 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-800 transition disabled:opacity-40 cursor-pointer"
+                    title={lang === 'bn' ? 'রিসাইকেল বিন খালি করে সব ফাইল সারা জীবনের জন্য মুছে ফেলুন' : 'Empty Recycle Bin and delete forever'}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{lang === 'bn' ? 'সারা জীবনের জন্য সব ডিলিট' : 'Delete All Forever'}</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
 

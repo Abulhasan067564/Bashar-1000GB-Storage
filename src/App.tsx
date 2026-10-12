@@ -52,7 +52,9 @@ import {
   Upload, 
   AlertCircle, 
   CheckCircle2,
-  Zap
+  Zap,
+  Trash2,
+  ArchiveRestore
 } from 'lucide-react';
 
 const DEFAULT_ADMIN: AdminCredentials = {
@@ -720,53 +722,89 @@ export default function App() {
     }
   };
 
-  // Single file delete ("এক এক করে ডিলিট")
-  const handleDeleteFile = async (file: StorageFile) => {
-    if (file.inTrash) {
-      // Permanent delete
-      await deleteStoredFile(file.id);
-      deleteFileFromFirestore(file.id).catch(() => {});
-      setFiles(prev => prev.filter(f => f.id !== file.id));
-      showToast(lang === 'bn' ? 'ফাইলটি স্থায়ীভাবে মুছে ফেলা হয়েছে।' : 'File permanently deleted.');
-    } else {
-      // Move to Trash
-      const updated: StorageFile = { ...file, inTrash: true, deletedAt: new Date().toISOString() };
-      await saveStoredFile(updated);
-      saveFileToFirestore(updated).catch(() => {});
-      setFiles(prev => prev.map(f => f.id === file.id ? updated : f));
-      showToast(lang === 'bn' ? 'ফাইলটি রিসাইকেল বিনে পাঠানো হয়েছে।' : 'File moved to Trash.');
+  // Helper to get item and all descendants (for folders)
+  const getDescendantIds = (rootIds: string[], allFiles: StorageFile[]): string[] => {
+    const result = new Set<string>(rootIds);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const f of allFiles) {
+        if (f.folderId && result.has(f.folderId) && !result.has(f.id)) {
+          result.add(f.id);
+          added = true;
+        }
+      }
     }
+    return Array.from(result);
+  };
+
+  // Single file/folder delete
+  const handleDeleteFile = async (file: StorageFile) => {
+    const ids = getDescendantIds([file.id], files);
+
+    if (file.inTrash) {
+      // 1. In Recycle Bin: PERMANENT DELETE FOREVER ("সারা জীবনের জন্য ডিলিট")
+      await deleteMultipleStoredFiles(ids);
+      ids.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
+      setFiles(prev => prev.filter(f => !ids.includes(f.id)));
+      showToast(
+        lang === 'bn'
+          ? (file.isFolder 
+              ? `"${file.name}" ফোল্ডার এবং ভেতরের সব ফাইল সারা জীবনের জন্য মুছে ফেলা হয়েছে!` 
+              : 'ফাইলটি সারা জীবনের জন্য স্থায়ীভাবে মুছে ফেলা হয়েছে!')
+          : 'Permanently deleted forever!'
+      );
+    } else {
+      // 2. Outside Recycle Bin: SAFE MOVE TO RECYCLE BIN ("রিসাইকেল বিনে পাঠান")
+      const now = new Date().toISOString();
+      const updatedFiles = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: true, deletedAt: now }));
+      await saveMultipleStoredFiles(updatedFiles);
+      updatedFiles.forEach(f => saveFileToFirestore(f).catch(() => {}));
+      setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f));
+      showToast(
+        lang === 'bn'
+          ? (file.isFolder
+              ? `"${file.name}" ফোল্ডার রিসাইকেল বিনে পাঠানো হয়েছে।`
+              : 'ফাইলটি রিসাইকেল বিনে পাঠানো হয়েছে। সারা জীবনের জন্য মুছতে রিসাইকেল বিন থেকে ডিলিট করুন।')
+          : 'Moved to Recycle Bin. Delete from Recycle Bin to remove permanently.'
+      );
+    }
+
     setSelectedFileIds(prev => {
       const next = new Set(prev);
-      next.delete(file.id);
+      ids.forEach(id => next.delete(id));
       return next;
     });
   };
 
-  // BATCH DELETE ALL SELECTED ("সব একসাথে ডিলিট")
+  // BATCH DELETE ALL SELECTED
   const handleBatchDelete = async () => {
     if (selectedFileIds.size === 0) return;
-    const ids = Array.from(selectedFileIds);
+    const targetIds = Array.from(selectedFileIds);
+    const ids = getDescendantIds(targetIds, files);
 
     if (activeTab === 'trash') {
-      // Permanent batch delete
+      // Permanent batch delete forever from Recycle Bin
       await deleteMultipleStoredFiles(ids);
       ids.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
-      setFiles(prev => prev.filter(f => !selectedFileIds.has(f.id)));
-      showToast(lang === 'bn' ? `${ids.length} টি ফাইল স্থায়ীভাবে মুছে ফেলা হয়েছে!` : `${ids.length} files permanently deleted!`);
+      setFiles(prev => prev.filter(f => !ids.includes(f.id)));
+      showToast(
+        lang === 'bn' 
+          ? `${ids.length} টি ফাইল সারা জীবনের জন্য স্থায়ীভাবে মুছে ফেলা হয়েছে!` 
+          : `${ids.length} files permanently deleted forever!`
+      );
     } else {
-      // Move selected to trash
-      const updatedFiles = files.map(f => {
-        if (selectedFileIds.has(f.id)) {
-          const upd = { ...f, inTrash: true, deletedAt: new Date().toISOString() };
-          saveFileToFirestore(upd).catch(() => {});
-          return upd;
-        }
-        return f;
-      });
-      await saveMultipleStoredFiles(updatedFiles.filter(f => selectedFileIds.has(f.id)));
-      setFiles(updatedFiles);
-      showToast(lang === 'bn' ? `${ids.length} টি ফাইল একসাথে রিসাইকেল বিনে সরানো হয়েছে!` : `${ids.length} files moved to Trash!`);
+      // Move selected to Recycle Bin safely
+      const now = new Date().toISOString();
+      const updatedFiles = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: true, deletedAt: now }));
+      await saveMultipleStoredFiles(updatedFiles);
+      updatedFiles.forEach(f => saveFileToFirestore(f).catch(() => {}));
+      setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f));
+      showToast(
+        lang === 'bn' 
+          ? `${ids.length} টি ফাইল রিসাইকেল বিনে পাঠানো হয়েছে!` 
+          : `${ids.length} files moved to Recycle Bin!`
+      );
     }
 
     setSelectedFileIds(new Set());
@@ -778,17 +816,45 @@ export default function App() {
     if (trashFiles.length === 0) return;
     const trashIds = trashFiles.map(f => f.id);
     await deleteMultipleStoredFiles(trashIds);
+    trashIds.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
     setFiles(prev => prev.filter(f => !f.inTrash));
     setSelectedFileIds(new Set());
-    showToast(lang === 'bn' ? 'রিসাইকেল বিন সম্পূর্ণ খালি করা হয়েছে!' : 'Trash emptied successfully!');
+    showToast(
+      lang === 'bn' 
+        ? 'রিসাইকেল বিন সম্পূর্ণ খালি করা হয়েছে এবং সব ফাইল সারা জীবনের জন্য মুছে ফেলা হয়েছে!' 
+        : 'Recycle Bin emptied and all files permanently deleted forever!'
+    );
   };
 
   // Restore single file from trash
   const handleRestoreFile = async (file: StorageFile) => {
-    const updated: StorageFile = { ...file, inTrash: false, deletedAt: undefined };
-    await saveStoredFile(updated);
-    setFiles(prev => prev.map(f => f.id === file.id ? updated : f));
-    showToast(lang === 'bn' ? 'ফাইলটি ড্রাইভে রিস্টোর করা হয়েছে।' : 'File restored to Drive.');
+    const ids = getDescendantIds([file.id], files);
+    const restored = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
+    await saveMultipleStoredFiles(restored);
+    restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
+    setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f));
+    showToast(
+      lang === 'bn' 
+        ? (file.isFolder ? `"${file.name}" ফোল্ডার ড্রাইভে রিস্টোর করা হয়েছে।` : 'ফাইলটি ড্রাইভে রিস্টোর করা হয়েছে।') 
+        : 'Item restored to Drive.'
+    );
+  };
+
+  // Restore selected trash files
+  const handleBatchRestoreTrash = async () => {
+    if (selectedFileIds.size === 0) return;
+    const targetIds = Array.from(selectedFileIds);
+    const ids = getDescendantIds(targetIds, files);
+    const restored = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
+    await saveMultipleStoredFiles(restored);
+    restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
+    setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f));
+    setSelectedFileIds(new Set());
+    showToast(
+      lang === 'bn' 
+        ? `${ids.length} টি ফাইল সফলভাবে ড্রাইভে রিস্টোর করা হয়েছে!` 
+        : `${ids.length} files restored to Drive!`
+    );
   };
 
   // Restore all trash files
@@ -797,6 +863,7 @@ export default function App() {
     if (trashFiles.length === 0) return;
     const restored = trashFiles.map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
     await saveMultipleStoredFiles(restored);
+    restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
     setFiles(prev => prev.map(f => f.inTrash ? { ...f, inTrash: false, deletedAt: undefined } : f));
     setSelectedFileIds(new Set());
     showToast(lang === 'bn' ? 'সব ফাইল সফলভাবে রিস্টোর করা হয়েছে!' : 'All files restored!');
@@ -1093,6 +1160,7 @@ export default function App() {
             onNavigateUpFolder={handleNavigateUpFolder}
             onEmptyTrash={handleEmptyTrash}
             onRestoreAllTrash={handleRestoreAllTrash}
+            onBatchRestoreTrash={handleBatchRestoreTrash}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             selectedCategory={selectedCategory}
@@ -1105,44 +1173,82 @@ export default function App() {
 
           {/* Files Container */}
           <div className="flex-1 p-4 lg:p-6">
+            {/* Recycle Bin Reassurance Notice Banner */}
+            {activeTab === 'trash' && (
+              <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-red-950/40 via-slate-900/60 to-red-950/40 border border-red-900/40 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/20 text-red-400 shrink-0">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">
+                      {lang === 'bn' ? '🗑️ রিসাইকেল বিন (Recycle Bin)' : '🗑️ Recycle Bin'}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {lang === 'bn' 
+                        ? 'রিসাইকেল বিন থেকে স্থায়ীভাবে ডিলিট না করা পর্যন্ত আপনার ফাইল কোথাও যাবে না এবং সম্পূর্ণ নিরাপদ থাকবে। আপনি এখান থেকে ফাইল রিস্টোর করতে পারবেন অথবা চাইলে সারা জীবনের জন্য ডিলিট করতে পারবেন।' 
+                        : 'Files remain safe here unless deleted from the Recycle Bin. You can restore them or permanently delete them forever.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {filteredFiles.length === 0 ? (
               <div className="h-96 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-slate-800 rounded-3xl bg-slate-900/20">
                 <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4">
-                  <Cloud className="w-8 h-8" />
+                  {activeTab === 'trash' ? (
+                    <Trash2 className="w-8 h-8 text-red-400" />
+                  ) : (
+                    <Cloud className="w-8 h-8" />
+                  )}
                 </div>
                 <h3 className="text-base font-bold text-slate-200">
-                  {currentFolder
-                    ? (lang === 'bn' ? `"${currentFolder.name}" ফোল্ডারটিতে কোনো ফাইল নেই` : `Folder "${currentFolder.name}" is empty`)
-                    : (lang === 'bn' ? 'ড্রাইভটিতে এখনো কোনো ফাইল নেই' : 'Your 1000 GB Drive is Empty')}
+                  {activeTab === 'trash'
+                    ? (lang === 'bn' ? 'রিসাইকেল বিন সম্পূর্ণ খালি' : 'Recycle Bin is Empty')
+                    : currentFolder
+                      ? (lang === 'bn' ? `"${currentFolder.name}" ফোল্ডারটিতে কোনো ফাইল নেই` : `Folder "${currentFolder.name}" is empty`)
+                      : (lang === 'bn' ? 'ড্রাইভটিতে এখনো কোনো ফাইল নেই' : 'Your 1000 GB Drive is Empty')}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-sm mt-1 mb-5">
-                  {searchQuery
-                    ? (lang === 'bn' ? 'আপনার সার্চ কোয়েরির সাথে কোনো ফাইল মেলেনি।' : 'No files match your search query.')
-                    : currentFolder
-                      ? (lang === 'bn' ? 'এই ফোল্ডারের ভিতরে ফাইল তৈরি করুন, আপলোড করুন বা অন্য ফাইল মুভ করে নিয়ে আসুন।' : 'Create, upload, or move files into this folder.')
-                      : (lang === 'bn' ? 'আপনার ১০০০ জিবি স্পেসে নতুন ফাইল তৈরি করুন বা ফাইল আপলোড শুরু করুন।' : 'Start creating or uploading your files into your 1000 GB space.')}
+                  {activeTab === 'trash'
+                    ? (lang === 'bn' ? 'এখানে কোনো ফাইল নেই। বাশার ড্রাইভ থেকে কোনো ফাইল ডিলিট করলে তা নিরাপদে এখানে জমা থাকবে।' : 'No deleted files. Any deleted files will be safely stored here.')
+                    : searchQuery
+                      ? (lang === 'bn' ? 'আপনার সার্চ কোয়েরির সাথে কোনো ফাইল মেলেনি।' : 'No files match your search query.')
+                      : currentFolder
+                        ? (lang === 'bn' ? 'এই ফোল্ডারের ভিতরে ফাইল তৈরি করুন, আপলোড করুন বা অন্য ফাইল মুভ করে নিয়ে আসুন।' : 'Create, upload, or move files into this folder.')
+                        : (lang === 'bn' ? 'আপনার ১০০০ জিবি স্পেসে নতুন ফাইল তৈরি করুন বা ফাইল আপলোড শুরু করুন।' : 'Start creating or uploading your files into your 1000 GB space.')}
                 </p>
-                <div className="flex items-center gap-3 flex-wrap justify-center">
+                {activeTab === 'trash' ? (
                   <button
-                    onClick={() => setIsCreateFileOpen(true)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs rounded-xl border border-cyan-500/30 transition flex items-center gap-2 cursor-pointer"
+                    onClick={() => setActiveTab('all')}
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs rounded-xl border border-cyan-500/30 transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>{lang === 'bn' ? 'নতুন ফাইল তৈরি' : 'Create File'}</span>
+                    <span>{lang === 'bn' ? 'বাশার ড্রাইভে ফিরে যান' : 'Back to Drive'}</span>
                   </button>
-                  <button
-                    onClick={() => setIsCreateFolderOpen(true)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-2 cursor-pointer"
-                  >
-                    <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
-                  </button>
-                  <button
-                    onClick={() => setIsUploadOpen(true)}
-                    className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer transition hover:scale-105"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>{lang === 'bn' ? 'ফাইল আপলোড করুন' : 'Upload Files'}</span>
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-3 flex-wrap justify-center">
+                    <button
+                      onClick={() => setIsCreateFileOpen(true)}
+                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs rounded-xl border border-cyan-500/30 transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>{lang === 'bn' ? 'নতুন ফাইল তৈরি' : 'Create File'}</span>
+                    </button>
+                    <button
+                      onClick={() => setIsCreateFolderOpen(true)}
+                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
+                    </button>
+                    <button
+                      onClick={() => setIsUploadOpen(true)}
+                      className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 flex items-center gap-2 cursor-pointer transition hover:scale-105"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{lang === 'bn' ? 'ফাইল আপলোড করুন' : 'Upload Files'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : viewMode === 'grid' ? (
               /* Grid View */

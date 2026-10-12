@@ -273,7 +273,7 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                 type="button"
                 onClick={() => onDelete(file)}
                 className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
-                title="Delete"
+                title={lang === 'bn' ? 'রিসাইকেল বিনে পাঠান' : 'Move to Recycle Bin'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -285,7 +285,7 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                   type="button"
                   onClick={() => onRestore(file)}
                   className="p-1.5 text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 rounded-lg transition"
-                  title="Restore"
+                  title={lang === 'bn' ? 'রিস্টোর করুন' : 'Restore'}
                 >
                   <ArchiveRestore className="w-3.5 h-3.5" />
                 </button>
@@ -294,7 +294,7 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                 type="button"
                 onClick={() => onDelete(file)}
                 className="p-1.5 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded-lg transition"
-                title="Delete permanently"
+                title={lang === 'bn' ? 'সারা জীবনের জন্য ডিলিট (স্থায়ীভাবে)' : 'Delete permanently forever'}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
