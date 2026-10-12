@@ -25,6 +25,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
+import { signInWithGoogle } from '../services/firebase';
 
 interface AuthScreenProps {
   usersList: UserAccount[];
@@ -62,8 +63,57 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setIsGoogleLoading(true);
+    try {
+      const googleUser = await signInWithGoogle();
+      const emailClean = googleUser.email?.trim() || '';
+
+      // Check if user already exists
+      let user = usersList.find(u => emailClean && isSameEmailOrPhone(u.emailOrPhone, emailClean));
+      if (!user) {
+        user = {
+          id: googleUser.uid || 'user-google-' + Date.now(),
+          name: googleUser.displayName?.trim() || (lang === 'bn' ? 'গুগল ব্যবহারকারী' : 'Google User'),
+          emailOrPhone: emailClean || 'google_user@gmail.com',
+          secretName: 'google-' + (emailClean ? emailClean.split('@')[0] : 'recovery'),
+          passwordHash: '',
+          customLogo: googleUser.photoURL || undefined,
+          birthDate: '',
+          totalStorageBytes: 1000 * 1024 * 1024 * 1024,
+          status: 'active',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        const updated = [...usersList, user];
+        onUpdateUsersList(updated);
+      } else {
+        if (!user.customLogo && googleUser.photoURL) {
+          user = { ...user, customLogo: googleUser.photoURL };
+          const updated = usersList.map(u => u.id === user!.id ? user! : u);
+          onUpdateUsersList(updated);
+        }
+      }
+
+      onLoginSuccess(user);
+    } catch (err: any) {
+      const code = err?.code;
+      if (code === 'auth/popup-closed-by-user') {
+        setError(lang === 'bn' ? 'গুগল সাইন ইন উইন্ডোটি বন্ধ করা হয়েছে।' : 'Google sign-in popup was closed.');
+      } else if (code === 'auth/popup-blocked') {
+        setError(lang === 'bn' ? 'ব্রাউজারে পপ-আপ ব্লক করা আছে। অনুগ্রহ করে পপ-আপ আনব্লক করুন।' : 'Popup was blocked by your browser. Please allow popups.');
+      } else {
+        setError(lang === 'bn' ? 'গুগল সাইন ইন সম্পন্ন করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।' : (err?.message || 'Google sign-in failed. Please try again.'));
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -336,22 +386,65 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         <div className="w-full max-w-md bg-slate-900/90 border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-cyan-950/20 backdrop-blur-xl">
           {/* Tabs */}
           {(mode === 'login' || mode === 'signup') && (
-            <div className="flex bg-slate-950 p-1 rounded-2xl mb-5 border border-slate-800">
+            <>
+              {/* Sign in with Google Button */}
               <button
                 type="button"
-                onClick={() => { setMode('signup'); setError(null); }}
-                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition ${mode === 'signup' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading}
+                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 mb-4 bg-white hover:bg-slate-100 text-slate-900 font-semibold text-xs sm:text-sm rounded-2xl shadow-md hover:shadow-cyan-500/10 transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed border border-slate-200"
               >
-                {lang === 'bn' ? 'সাইন আপ (Sign Up)' : 'Sign Up'}
+                {/* Official Google G Icon */}
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>
+                  {isGoogleLoading
+                    ? (lang === 'bn' ? 'গুগল সাইন ইন হচ্ছে...' : 'Signing in with Google...')
+                    : (lang === 'bn' ? 'Sign in with Google' : 'Sign in with Google')}
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => { setMode('login'); setError(null); }}
-                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition ${mode === 'login' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
-              >
-                {lang === 'bn' ? 'লগইন (Sign In)' : 'Sign In'}
-              </button>
-            </div>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-slate-800" />
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {lang === 'bn' ? 'অথবা ইমেইল/নম্বর দিয়ে' : 'or with email/phone'}
+                </span>
+                <div className="flex-1 h-px bg-slate-800" />
+              </div>
+
+              <div className="flex bg-slate-950 p-1 rounded-2xl mb-5 border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setMode('signup'); setError(null); }}
+                  className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition ${mode === 'signup' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {lang === 'bn' ? 'সাইন আপ (Sign Up)' : 'Sign Up'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMode('login'); setError(null); }}
+                  className={`flex-1 py-2.5 text-xs sm:text-sm font-bold rounded-xl transition ${mode === 'login' ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {lang === 'bn' ? 'লগইন (Sign In)' : 'Sign In'}
+                </button>
+              </div>
+            </>
           )}
 
           {/* Feedback messages */}

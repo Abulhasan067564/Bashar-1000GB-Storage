@@ -27,7 +27,9 @@ import {
   loadUserFilesFromFirestore,
   testConnection,
   saveAdminCredentialsToFirestore,
-  loadAdminCredentialsFromFirestore
+  loadAdminCredentialsFromFirestore,
+  isQuotaExceeded,
+  subscribeQuotaExceeded
 } from './services/firebase';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
 import { Navbar } from './components/Navbar';
@@ -54,7 +56,9 @@ import {
   CheckCircle2,
   Zap,
   Trash2,
-  ArchiveRestore
+  ArchiveRestore,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 const DEFAULT_ADMIN: AdminCredentials = {
@@ -161,6 +165,14 @@ export default function App() {
   const [isSyncingFiles, setIsSyncingFiles] = useState(false);
   const [isDragOverWindow, setIsDragOverWindow] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [quotaExceeded, setQuotaExceededState] = useState(isQuotaExceeded());
+  const [isQuotaDismissed, setIsQuotaDismissed] = useState(false);
+
+  useEffect(() => {
+    return subscribeQuotaExceeded((exceeded) => {
+      setQuotaExceededState(exceeded);
+    });
+  }, []);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -191,10 +203,14 @@ export default function App() {
           setAdminCredentials(cloudAdmin);
           localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(cloudAdmin));
         } else {
-          // Initialize default admin (ArRahman7 / Rahim@Chabi28) in cloud
+          // Initialize default admin in local cache first
           setAdminCredentials(DEFAULT_ADMIN);
-          localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(DEFAULT_ADMIN));
-          saveAdminCredentialsToFirestore(DEFAULT_ADMIN).catch(() => {});
+          if (!localStorage.getItem(STORAGE_ADMIN_CREDS_KEY)) {
+            localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(DEFAULT_ADMIN));
+          }
+          if (!isQuotaExceeded()) {
+            saveAdminCredentialsToFirestore(DEFAULT_ADMIN).catch(() => {});
+          }
         }
       } catch (err) {
         console.warn('Initial cloud sync notice:', err);
@@ -325,13 +341,15 @@ export default function App() {
         }
       });
 
-      // If local files are not yet in Firestore or cloud doc was missing dataUrl
-      userLocals.forEach(lf => {
-        const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
-        if (!cloudMatch || (!cloudMatch.dataUrl && lf.dataUrl && lf.dataUrl.length < 850000)) {
-          filesToPushToCloud.push(lf);
-        }
-      });
+      // If local files are not yet in Firestore or cloud doc was missing dataUrl (and quota is OK)
+      if (!isQuotaExceeded() && cloudFiles.length > 0) {
+        userLocals.forEach(lf => {
+          const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
+          if (!cloudMatch || (!cloudMatch.dataUrl && lf.dataUrl && lf.dataUrl.length < 850000)) {
+            filesToPushToCloud.push(lf);
+          }
+        });
+      }
 
       const mergedFiles = Array.from(fileMap.values());
       // Sort newest first
@@ -343,8 +361,8 @@ export default function App() {
         await saveMultipleStoredFiles(mergedFiles);
       }
 
-      // Back up local files to cloud
-      if (filesToPushToCloud.length > 0) {
+      // Back up local files to cloud only if quota is healthy
+      if (filesToPushToCloud.length > 0 && !isQuotaExceeded()) {
         for (const fileToPush of filesToPushToCloud) {
           saveFileToFirestore(fileToPush).catch(() => {});
         }
@@ -352,9 +370,9 @@ export default function App() {
 
       if (isManual) {
         showToast(
-          lang === 'bn'
-            ? 'ক্লাউডের সাথে সকল ফাইল সফলভাবে সিঙ্ক হয়েছে!'
-            : 'All files synced with cloud successfully!'
+          isQuotaExceeded()
+            ? (lang === 'bn' ? 'ফাইলগুলো নিরাপদে লোকাল স্টোরেজে সংরক্ষিত রয়েছে।' : 'Files safely preserved in local storage.')
+            : (lang === 'bn' ? 'ক্লাউডের সাথে সকল ফাইল সফলভাবে সিঙ্ক হয়েছে!' : 'All files synced with cloud successfully!')
         );
       }
     } catch (err) {
@@ -368,7 +386,11 @@ export default function App() {
     setCurrentUser(user);
     localStorage.setItem(STORAGE_SESSION_KEY, user.id);
     saveUserToFirestore(user).catch(() => {});
-    showToast(lang === 'bn' ? `স্বাগতম, ${user.name}! ক্লাউড ফাইল লোড হচ্ছে...` : `Welcome, ${user.name}! Loading files...`);
+    showToast(
+      lang === 'bn' 
+        ? `স্বাগতম, ${user.name}! প্রোফাইলে গিয়ে লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড সেট করতে পারেন।` 
+        : `Welcome, ${user.name}! Customize your logo, name, birthday & password in Profile.`
+    );
     await syncUserFiles(user.id);
   };
 

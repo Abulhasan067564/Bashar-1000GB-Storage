@@ -10,7 +10,10 @@ import {
   Check, 
   Sparkles, 
   Camera,
-  ShieldCheck
+  ShieldCheck,
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface ProfileModalProps {
@@ -41,6 +44,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [name, setName] = useState(currentUser.name || '');
   const [birthDate, setBirthDate] = useState(currentUser.birthDate || '');
   const [customLogo, setCustomLogo] = useState(currentUser.customLogo || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
@@ -72,11 +78,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       return;
     }
 
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 4) {
+        setError(lang === 'bn' ? 'পাসওয়ার্ড ন্যূনতম ৪ অক্ষরের হতে হবে।' : 'Password must be at least 4 characters.');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setError(lang === 'bn' ? 'পাসওয়ার্ড দুটি মেলেনি! নিশ্চিতকরণ পাসওয়ার্ড চেক করুন।' : 'Passwords do not match! Please check confirmation.');
+        return;
+      }
+    }
+
     const updated: UserAccount = {
       ...currentUser,
       name: name.trim(),
       birthDate: birthDate.trim() || undefined,
-      customLogo: customLogo.trim() || undefined
+      customLogo: customLogo.trim() || undefined,
+      passwordHash: newPassword.trim() ? newPassword.trim() : currentUser.passwordHash
     };
 
     onUpdateUser(updated);
@@ -220,6 +238,63 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 onChange={e => setBirthDate(e.target.value)}
                 className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* PASSWORD UPDATE SECTION (পাসওয়ার্ড আবার পরিবর্তন করতে পারবে) */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold">
+                <KeyRound className="w-4 h-4" />
+                <span>{lang === 'bn' ? 'পাসওয়ার্ড সেট বা পরিবর্তন করুন' : 'Set or Change Password'}</span>
+              </div>
+              <span className="text-[10px] text-slate-500">
+                {lang === 'bn' ? '(ঐচ্ছিক)' : '(Optional)'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-tight">
+              {lang === 'bn' 
+                ? 'আপনার একাউন্টের পাসওয়ার্ড পরিবর্তন করতে চাইলে এখানে নতুন পাসওয়ার্ড লিখুন।' 
+                : 'Enter a new password here if you wish to set or update your account password.'}
+            </p>
+
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  {lang === 'bn' ? 'নতুন পাসওয়ার্ড' : 'New Password'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder={lang === 'bn' ? 'নতুন পাসওয়ার্ড দিন (ন্যূনতম ৪ অক্ষর)' : 'Enter new password (min 4 chars)'}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none pr-8"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-2.5 top-2 text-slate-500 hover:text-slate-300"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {newPassword.length > 0 && (
+                <div className="animate-in fade-in">
+                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    {lang === 'bn' ? 'নতুন পাসওয়ার্ড নিশ্চিত করুন' : 'Confirm New Password'}
+                  </label>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder={lang === 'bn' ? 'আবার নতুন পাসওয়ার্ড লিখুন' : 'Re-type new password'}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

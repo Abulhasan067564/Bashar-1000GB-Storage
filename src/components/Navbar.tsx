@@ -161,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onOpenProfile}
                 className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 text-left transition cursor-pointer"
-                title={lang === 'bn' ? 'প্রোফাইল সেটিংস (লোগো, নাম ও জন্ম তারিখ)' : 'Profile Settings (Logo, Name & Date of Birth)'}
+                title={lang === 'bn' ? 'প্রোফাইল সেটিংস (লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড পরিবর্তন)' : 'Profile Settings (Logo, Name, Date of Birth & Password)'}
               >
                 {currentUser.customLogo ? (
                   <div className="w-8 h-8 rounded-lg overflow-hidden border border-cyan-400 shrink-0">
