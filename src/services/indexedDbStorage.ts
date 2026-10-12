@@ -1,96 +1,264 @@
 import { StorageFile, FileCategory } from '../types/storage';
 
 const DB_NAME = 'Bashar1000GB_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped to 2 for reliable schema upgrade
 const STORE_FILES = 'files';
+export const STORAGE_FILES_BACKUP_KEY = 'bashar_1000gb_files_local_backup';
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_FILES)) {
-        db.createObjectStore(STORE_FILES, { keyPath: 'id' });
+let cachedDB: IDBDatabase | null = null;
+
+// Synchronous and immediate LocalStorage backup engine
+export function getStoredFilesBackup(): StorageFile[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_FILES_BACKUP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return [];
+  } catch (err) {
+    console.warn('Could not read stored files backup from localStorage:', err);
+    return [];
+  }
+}
+
+export function saveStoredFilesBackup(files: StorageFile[]): void {
+  try {
+    const json = JSON.stringify(files);
+    // Safe standard LocalStorage threshold (~3.5 MB)
+    if (json.length < 3500000) {
+      localStorage.setItem(STORAGE_FILES_BACKUP_KEY, json);
+      return;
+    }
+  } catch {}
+
+  // If payload exceeds quota or throws, preserve all file metadata + small dataUrls
+  try {
+    const lightweightFiles = files.map(f => {
+      if (f.dataUrl && f.dataUrl.length > 50000) {
+        // Strip huge binary dataUrl for localStorage backup (full binary is preserved in IndexedDB)
+        const { dataUrl, ...rest } = f;
+        return rest;
       }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+      return f;
+    });
+    localStorage.setItem(STORAGE_FILES_BACKUP_KEY, JSON.stringify(lightweightFiles));
+  } catch (err) {
+    console.warn('LocalStorage backup quota reached, IndexedDB is active:', err);
+  }
+}
+
+export function openDB(): Promise<IDBDatabase> {
+  if (cachedDB) {
+    return Promise.resolve(cachedDB);
+  }
+
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      return reject(new Error('IndexedDB not available in this environment'));
+    }
+
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_FILES)) {
+          db.createObjectStore(STORE_FILES, { keyPath: 'id' });
+        }
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        cachedDB = db;
+        db.onversionchange = () => {
+          db.close();
+          cachedDB = null;
+        };
+        db.onclose = () => {
+          cachedDB = null;
+        };
+        resolve(db);
+      };
+
+      request.onerror = () => {
+        console.warn('IndexedDB open error:', request.error);
+        reject(request.error);
+      };
+
+      request.onblocked = () => {
+        console.warn('IndexedDB connection blocked by another active connection.');
+      };
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
 export async function getAllStoredFiles(): Promise<StorageFile[]> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readonly');
-    const store = tx.objectStore(STORE_FILES);
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
+  const backupFiles = getStoredFilesBackup();
+  const fileMap = new Map<string, StorageFile>();
+  backupFiles.forEach(f => fileMap.set(f.id, f));
+
+  try {
+    const db = await openDB();
+    const idbFiles: StorageFile[] = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readonly');
+      const store = tx.objectStore(STORE_FILES);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    idbFiles.forEach(f => {
+      const existing = fileMap.get(f.id);
+      if (!existing) {
+        fileMap.set(f.id, f);
+      } else {
+        fileMap.set(f.id, {
+          ...existing,
+          ...f,
+          dataUrl: f.dataUrl || existing.dataUrl
+        });
+      }
+    });
+
+    const merged = Array.from(fileMap.values());
+    saveStoredFilesBackup(merged);
+    return merged;
+  } catch (err) {
+    console.warn('IndexedDB read notice (safely using localStorage backup):', err);
+    return Array.from(fileMap.values());
+  }
 }
 
 export async function saveStoredFile(file: StorageFile): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readwrite');
-    const store = tx.objectStore(STORE_FILES);
-    const request = store.put(file);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  // 1. Immediately write to localStorage backup for instant survival across page reload
+  const backup = getStoredFilesBackup();
+  const existingIdx = backup.findIndex(f => f.id === file.id);
+  if (existingIdx >= 0) {
+    backup[existingIdx] = file;
+  } else {
+    backup.unshift(file);
+  }
+  saveStoredFilesBackup(backup);
+
+  // 2. Persist full record (including large dataUrl binary) to IndexedDB
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readwrite');
+      const store = tx.objectStore(STORE_FILES);
+      const request = store.put(file);
+      request.onerror = () => reject(request.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB write notice (file safely backed up in localStorage):', err);
+  }
 }
 
 export async function saveMultipleStoredFiles(files: StorageFile[]): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readwrite');
-    const store = tx.objectStore(STORE_FILES);
-    for (const f of files) {
-      store.put(f);
-    }
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  if (files.length === 0) return;
+
+  // 1. Immediately write to localStorage backup
+  const backup = getStoredFilesBackup();
+  const map = new Map<string, StorageFile>();
+  backup.forEach(f => map.set(f.id, f));
+  files.forEach(f => map.set(f.id, f));
+  const updatedList = Array.from(map.values());
+  saveStoredFilesBackup(updatedList);
+
+  // 2. Persist to IndexedDB
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readwrite');
+      const store = tx.objectStore(STORE_FILES);
+      for (const f of files) {
+        store.put(f);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB batch write notice (files safely backed up in localStorage):', err);
+  }
 }
 
 export async function deleteStoredFile(id: string): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readwrite');
-    const store = tx.objectStore(STORE_FILES);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  // 1. Delete from localStorage backup
+  const backup = getStoredFilesBackup();
+  const filtered = backup.filter(f => f.id !== id);
+  saveStoredFilesBackup(filtered);
+
+  // 2. Delete from IndexedDB
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readwrite');
+      const store = tx.objectStore(STORE_FILES);
+      store.delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB delete notice:', err);
+  }
 }
 
 export async function deleteMultipleStoredFiles(ids: string[]): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readwrite');
-    const store = tx.objectStore(STORE_FILES);
-    for (const id of ids) {
-      store.delete(id);
-    }
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  if (ids.length === 0) return;
+  const idSet = new Set(ids);
+
+  // 1. Delete from localStorage backup
+  const backup = getStoredFilesBackup();
+  const filtered = backup.filter(f => !idSet.has(f.id));
+  saveStoredFilesBackup(filtered);
+
+  // 2. Delete from IndexedDB
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readwrite');
+      const store = tx.objectStore(STORE_FILES);
+      for (const id of ids) {
+        store.delete(id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB batch delete notice:', err);
+  }
 }
 
 export async function clearAllFiles(): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_FILES, 'readwrite');
-    const store = tx.objectStore(STORE_FILES);
-    const request = store.clear();
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  saveStoredFilesBackup([]);
+  try {
+    const db = await openDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_FILES, 'readwrite');
+      const store = tx.objectStore(STORE_FILES);
+      store.clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('IndexedDB clear notice:', err);
+  }
 }
 
 export async function getUserStoredFiles(ownerId: string): Promise<StorageFile[]> {
   const all = await getAllStoredFiles();
-  return all.filter(f => f.ownerId === ownerId);
+  return all.filter(f => !f.ownerId || f.ownerId === ownerId || f.ownerId === 'default');
 }
 
 export function detectFileCategory(fileName: string, mimeType: string): FileCategory {

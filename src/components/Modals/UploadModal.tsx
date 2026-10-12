@@ -7,7 +7,7 @@ import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield, Zap } from 
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onFilesUploaded: (newFiles: StorageFile[]) => void;
+  onFilesUploaded: (newFiles: StorageFile[]) => Promise<void> | void;
   ownerId: string;
   currentFolderId?: string | null;
   lang: 'bn' | 'en';
@@ -158,8 +158,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         uploadedResults.push(...batchResults);
       }
 
+      setUploadProgress(95);
+      await Promise.resolve(onFilesUploaded(uploadedResults));
       setUploadProgress(100);
-      onFilesUploaded(uploadedResults);
       setIsUploading(false);
       onClose();
     } catch (err) {

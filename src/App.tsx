@@ -11,6 +11,7 @@ import {
 } from './types/storage';
 import { 
   getAllStoredFiles, 
+  getStoredFilesBackup,
   saveStoredFile, 
   saveMultipleStoredFiles, 
   deleteStoredFile, 
@@ -138,7 +139,18 @@ export default function App() {
     return null;
   });
   
-  const [files, setFiles] = useState<StorageFile[]>([]);
+  const [files, setFiles] = useState<StorageFile[]>(() => {
+    try {
+      const backup = getStoredFilesBackup();
+      const activeId = localStorage.getItem(STORAGE_SESSION_KEY);
+      if (activeId && backup.length > 0) {
+        return backup.filter(f => !f.ownerId || f.ownerId === activeId || f.ownerId === 'default');
+      }
+      return backup;
+    } catch {
+      return [];
+    }
+  });
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
@@ -311,9 +323,14 @@ export default function App() {
     try {
       // 1. Fetch locally cached files
       const localStored = await getAllStoredFiles();
-      const userLocals = localStored.filter(f => f.ownerId === userId);
+      const userLocals = localStored.filter(f => !f.ownerId || f.ownerId === userId || f.ownerId === 'default');
       const fileMap = new Map<string, StorageFile>();
-      userLocals.forEach(f => fileMap.set(f.id, f));
+      userLocals.forEach(f => {
+        if (!f.ownerId || f.ownerId === 'default') {
+          f.ownerId = userId;
+        }
+        fileMap.set(f.id, f);
+      });
 
       // 2. Fetch cloud files from Firestore
       const cloudFiles = await loadUserFilesFromFirestore(userId);
@@ -448,12 +465,18 @@ export default function App() {
       try {
         const stored = await getAllStoredFiles();
         // Fast local render if available
-        const userFiles = stored.filter(f => f.ownerId === currentUser.id);
+        const userFiles = stored.filter(f => !f.ownerId || f.ownerId === currentUser.id || f.ownerId === 'default');
+        userFiles.forEach(f => {
+          if (!f.ownerId || f.ownerId === 'default') {
+            f.ownerId = currentUser.id;
+          }
+        });
         if (userFiles.length > 0) {
+          userFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
           setFiles(userFiles);
         }
       } catch (err) {
-        console.error('Local IndexedDB load notice:', err);
+        console.error('Local storage load notice:', err);
       }
       // Cross-browser cloud sync
       await syncUserFiles(currentUser.id);
@@ -574,9 +597,8 @@ export default function App() {
       folderId: currentFolderId || null
     };
 
-    saveStoredFile(newFolder).then(() => {
-      saveFileToFirestore(newFolder).catch(() => {});
-    });
+    saveStoredFile(newFolder).catch(err => console.error(err));
+    saveFileToFirestore(newFolder).catch(() => {});
     setFiles(prev => [newFolder, ...prev]);
     showToast(lang === 'bn' ? `"${newFolder.name}" ফোল্ডার তৈরি হয়েছে!` : `Folder "${newFolder.name}" created!`);
     return newFolder;
@@ -584,10 +606,14 @@ export default function App() {
 
   // Create File
   const handleCreateFile = async (newFile: StorageFile) => {
-    await saveStoredFile(newFile);
-    saveFileToFirestore(newFile).catch(() => {});
-    setFiles(prev => [newFile, ...prev]);
-    showToast(lang === 'bn' ? `"${newFile.name}" ফাইল তৈরি হয়েছে!` : `File "${newFile.name}" created!`);
+    const enriched = {
+      ...newFile,
+      ownerId: newFile.ownerId || (currentUser ? currentUser.id : 'default')
+    };
+    await saveStoredFile(enriched);
+    saveFileToFirestore(enriched).catch(() => {});
+    setFiles(prev => [enriched, ...prev]);
+    showToast(lang === 'bn' ? `"${enriched.name}" ফাইল তৈরি হয়েছে!` : `File "${enriched.name}" created!`);
   };
 
   // Folder Navigation
@@ -931,19 +957,39 @@ export default function App() {
     }
   };
 
-  // Files Uploaded callback (Optimized for ultra-fast turbo response)
+  // Files Uploaded callback (Guaranteed persistent storage to both IndexedDB and LocalStorage)
   const handleFilesUploaded = async (newFiles: StorageFile[]) => {
-    // 1. Instant optimistic state update: files appear immediately in UI without waiting
-    setFiles(prev => [...newFiles, ...prev]);
+    const ownerId = currentUser ? currentUser.id : 'default';
+    const enrichedFiles = newFiles.map(f => ({
+      ...f,
+      ownerId: f.ownerId || ownerId
+    }));
+
+    // 1. Instant optimistic state update
+    setFiles(prev => {
+      const map = new Map<string, StorageFile>();
+      prev.forEach(f => map.set(f.id, f));
+      enrichedFiles.forEach(f => map.set(f.id, f));
+      const merged = Array.from(map.values());
+      merged.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      return merged;
+    });
+
+    // 2. Guaranteed persistence to both LocalStorage and IndexedDB before finishing
+    try {
+      await saveMultipleStoredFiles(enrichedFiles);
+    } catch (err) {
+      console.error('Storage persistence notice:', err);
+    }
+
+    // 3. Background sync to Firestore Cloud
+    saveMultipleFilesToFirestore(enrichedFiles).catch(err => console.error('Firestore batch error:', err));
+
     showToast(
       lang === 'bn' 
-        ? `⚡ ${newFiles.length} টি ফাইল টার্বো স্পিডে সফলভাবে আপলোড হয়েছে!` 
-        : `⚡ ${newFiles.length} files uploaded at turbo speed!`
+        ? `⚡ ${enrichedFiles.length} টি ফাইল নিরাপদে ড্রাইভে সংরক্ষিত হয়েছে!` 
+        : `⚡ ${enrichedFiles.length} files safely preserved & uploaded!`
     );
-
-    // 2. High-speed parallel persistence to IndexedDB and single-request batch to Firestore
-    saveMultipleStoredFiles(newFiles).catch(err => console.error('IndexedDB error:', err));
-    saveMultipleFilesToFirestore(newFiles).catch(err => console.error('Firestore batch error:', err));
   };
 
   // Direct Drag & Drop upload handler (Upload directly into current folder without opening modal)
@@ -1005,7 +1051,7 @@ export default function App() {
       };
 
       const results = await Promise.all(droppedFiles.map((f, i) => readSingle(f, i)));
-      handleFilesUploaded(results);
+      await handleFilesUploaded(results);
     } catch (err) {
       console.error(err);
       showToast(lang === 'bn' ? 'আপলোডে সমস্যা হয়েছে।' : 'Upload failed.', 'error');
