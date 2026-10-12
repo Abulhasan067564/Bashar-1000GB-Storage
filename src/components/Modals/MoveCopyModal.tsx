@@ -163,7 +163,7 @@ export const MoveCopyModal: React.FC<MoveCopyModalProps> = ({
             )}
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {/* Root Drive option */}
+              {/* Bashar Drive option */}
               <button
                 type="button"
                 onClick={() => setSelectedTargetId(null)}
@@ -175,7 +175,7 @@ export const MoveCopyModal: React.FC<MoveCopyModalProps> = ({
               >
                 <div className="flex items-center gap-2.5">
                   <HardDrive className="w-4 h-4 text-cyan-400" />
-                  <span>{lang === 'bn' ? 'মূল ড্রাইভ (Root Drive / বাইরে)' : 'Root Drive (Root / Top Level)'}</span>
+                  <span>{lang === 'bn' ? 'বাশার ড্রাইভ (Bashar Drive / বাইরে)' : 'Bashar Drive (Root / Top Level)'}</span>
                 </div>
                 {selectedTargetId === null && <Check className="w-4 h-4 text-cyan-400" />}
               </button>

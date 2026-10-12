@@ -117,7 +117,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <div className="text-[11px] opacity-80">
                 {currentFolder
                   ? (lang === 'bn' ? `বর্তমান অবস্থান: "${currentFolder.name}" ফোল্ডারের ভেতরে` : `Target: Inside "${currentFolder.name}"`)
-                  : (lang === 'bn' ? 'বর্তমান অবস্থান: মূল ড্রাইভ (Root Drive)' : 'Target: Root Drive')}
+                  : (lang === 'bn' ? 'বর্তমান অবস্থান: বাশার ড্রাইভ (Bashar Drive)' : 'Target: Bashar Drive')}
               </div>
             </div>
           </div>
@@ -167,7 +167,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                 className="text-slate-400 hover:text-white flex items-center gap-1"
               >
                 <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{lang === 'bn' ? 'ড্রাইভ' : 'Drive'}</span>
+                <span>{lang === 'bn' ? 'বাশার ড্রাইভ' : 'Bashar Drive'}</span>
               </button>
               <ChevronRight className="w-3 h-3 text-slate-600" />
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
@@ -178,7 +178,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           ) : (
             <div className="flex items-center gap-1.5 text-slate-400 font-semibold">
               <HardDrive className="w-4 h-4 text-cyan-400" />
-              <span>{lang === 'bn' ? 'মূল ড্রাইভ (Root Drive)' : 'Root Drive'}</span>
+              <span>{lang === 'bn' ? 'বাশার ড্রাইভ (Bashar Drive)' : 'Bashar Drive'}</span>
             </div>
           )}
         </div>
