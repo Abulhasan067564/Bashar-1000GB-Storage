@@ -66,5 +66,45 @@ export interface StorageStats {
   categoryBreakdown: Record<FileCategory, number>;
 }
 
+export interface SiteSettings {
+  siteName: string; // e.g. "Bashar"
+  siteBadge: string; // e.g. "1000GB"
+  siteLogoUrl?: string; // Custom logo image URL / base64 uploaded by admin
+  taglineBn: string; // e.g. "১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট"
+  taglineEn: string; // e.g. "1 TB Ultra-Fast Cloud Vault"
+  youtubeChannelUrl: string; // e.g. "http://www.youtube.com/@BasharGojolStudio"
+  youtubeChannelName: string; // e.g. "Bashar Gojol Studio"
+  youtubeBannerTextBn: string; // e.g. "❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸"
+  showYoutubeBanner: boolean;
+  announcementNotice?: string; // Optional global top notice banner
+  noticeType?: 'info' | 'warning' | 'alert' | 'success';
+  storageQuotaGb: number; // e.g. 1000
+  footerCopyright?: string; // e.g. "© 2026 Bashar 1000GB Cloud Storage"
+  contactSupport?: string; // Support WhatsApp / Telegram or Email link
+  allowRegistrations?: boolean; // Enable or disable new user signups
+  themeColor?: 'cyan' | 'emerald' | 'violet' | 'amber' | 'rose';
+  updatedAt?: string;
+}
+
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  siteName: 'Bashar',
+  siteBadge: '1000GB',
+  siteLogoUrl: '',
+  taglineBn: '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট • অনলাইন ডাটাবেস',
+  taglineEn: '1 TB Ultra-Fast Cloud Vault • Firestore Connected',
+  youtubeChannelUrl: 'http://www.youtube.com/@BasharGojolStudio',
+  youtubeChannelName: 'Bashar Gojol Studio',
+  youtubeBannerTextBn: '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸',
+  showYoutubeBanner: true,
+  announcementNotice: '',
+  noticeType: 'info',
+  storageQuotaGb: 1000,
+  footerCopyright: '© 2026 Bashar 1000GB Cloud Storage. সর্বস্বত্ব সংরক্ষিত।',
+  contactSupport: '',
+  allowRegistrations: true,
+  themeColor: 'cyan'
+};
+
 export type ViewMode = 'grid' | 'list';
 export type ActiveTab = 'all' | 'starred' | 'shared' | 'vault' | 'trash';
+

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UserAccount } from '../types/storage';
+import { UserAccount, SiteSettings } from '../types/storage';
 import { 
   isSameEmailOrPhone, 
   isEmail, 
@@ -35,6 +35,7 @@ interface AuthScreenProps {
   usersList: UserAccount[];
   onLoginSuccess: (user: UserAccount) => void;
   onUpdateUsersList: (users: UserAccount[]) => void;
+  siteSettings?: SiteSettings;
   lang: 'bn' | 'en';
   onToggleLang: () => void;
   onOpenAdminLogin?: () => void;
@@ -51,6 +52,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   usersList,
   onLoginSuccess,
   onUpdateUsersList,
+  siteSettings,
   lang,
   onToggleLang,
   onOpenAdminLogin
@@ -284,18 +286,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       {/* Top Header */}
       <header className="relative z-10 px-6 py-4 flex items-center justify-between border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20">
-            <Cloud className="w-6 h-6 stroke-[2.5]" />
-          </div>
+          {siteSettings?.siteLogoUrl ? (
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-cyan-400/50 shadow-lg shadow-cyan-500/20 bg-slate-900 shrink-0">
+              <img
+                src={siteSettings.siteLogoUrl}
+                alt={siteSettings.siteName}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20 shrink-0">
+              <Cloud className="w-6 h-6 stroke-[2.5]" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-xl font-black tracking-tight text-white">Bashar</span>
+              <span className="text-xl font-black tracking-tight text-white">
+                {siteSettings?.siteName || 'Bashar'}
+              </span>
               <span className="px-1.5 py-0.5 text-xs font-black tracking-wide rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 uppercase shadow-sm">
-                1000GB
+                {siteSettings?.siteBadge || '1000GB'}
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              {lang === 'bn' ? '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট' : '1 TB Ultra-Fast Cloud Vault'}
+              {lang === 'bn' ? (siteSettings?.taglineBn || '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট') : (siteSettings?.taglineEn || '1 TB Ultra-Fast Cloud Vault')}
             </p>
           </div>
         </div>
@@ -323,7 +337,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       </header>
 
       {/* YouTube Channel Promo Banner */}
-      <YouTubeBanner lang={lang} />
+      <YouTubeBanner lang={lang} siteSettings={siteSettings} />
 
       {/* Main Container */}
       <main className="relative z-10 flex-1 flex flex-col lg:flex-row items-center justify-center p-6 gap-8 max-w-6xl mx-auto w-full">
@@ -331,7 +345,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         <div className="flex-1 space-y-6 text-center lg:text-left">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-950/70 border border-cyan-800/60 text-cyan-300 text-xs font-bold">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>{lang === 'bn' ? '১,০০০ জিবি ফ্রি ক্লাউড স্পেস' : '1,000 GB Free Cloud Storage'}</span>
+            <span>
+              {lang === 'bn'
+                ? `${siteSettings?.storageQuotaGb || 1000} জিবি ফ্রি ক্লাউড স্পেস`
+                : `${siteSettings?.storageQuotaGb || 1000} GB Free Cloud Storage`}
+            </span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
@@ -339,14 +357,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               <>
                 আপনার সমস্ত ফাইল রাখুন <br />
                 <span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
-                  Bashar 1000GB
+                  {siteSettings?.siteName || 'Bashar'} {siteSettings?.siteBadge || '1000GB'}
                 </span> ক্লাউডে
               </>
             ) : (
               <>
                 Store All Your Files with <br />
                 <span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500 bg-clip-text text-transparent">
-                  Bashar 1000GB
+                  {siteSettings?.siteName || 'Bashar'} {siteSettings?.siteBadge || '1000GB'}
                 </span>
               </>
             )}

@@ -15,7 +15,7 @@ import {
   disableNetwork,
   enableNetwork
 } from 'firebase/firestore';
-import { UserAccount, StorageFile, AdminCredentials } from '../types/storage';
+import { UserAccount, StorageFile, AdminCredentials, SiteSettings } from '../types/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -477,4 +477,47 @@ export async function signInWithGoogle(): Promise<{
     photoURL: result.user.photoURL
   };
 }
+
+// Save site settings / branding to Firestore
+export async function saveSiteSettingsToFirestore(settings: SiteSettings): Promise<void> {
+  const path = 'admin_config/site_settings';
+  try {
+    const cleanSettings: Record<string, any> = {
+      updatedAt: new Date().toISOString()
+    };
+    for (const [key, val] of Object.entries(settings)) {
+      if (val !== undefined) {
+        cleanSettings[key] = val;
+      }
+    }
+    await setDoc(doc(db, 'admin_config', 'site_settings'), cleanSettings, { merge: true });
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Load site settings / branding from Firestore
+export async function loadSiteSettingsFromFirestore(): Promise<SiteSettings | null> {
+  if (quotaExceededState) return null;
+  const path = 'admin_config/site_settings';
+  try {
+    const snap = await getDoc(doc(db, 'admin_config', 'site_settings'));
+    if (snap.exists()) {
+      return snap.data() as SiteSettings;
+    }
+    return null;
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return null;
+    }
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
+  }
+}
+
 

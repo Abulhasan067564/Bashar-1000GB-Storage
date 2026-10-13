@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserAccount, StorageStats } from '../types/storage';
+import { UserAccount, StorageStats, SiteSettings } from '../types/storage';
 import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3 } from 'lucide-react';
 
 interface NavbarProps {
@@ -12,6 +12,7 @@ interface NavbarProps {
   searchQuery: string;
   onSearchChange: (q: string) => void;
   stats: StorageStats;
+  siteSettings?: SiteSettings;
   lang: 'bn' | 'en';
   onToggleLang: () => void;
   onOpenAdmin?: () => void;
@@ -29,6 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   searchQuery,
   onSearchChange,
   stats,
+  siteSettings,
   lang,
   onToggleLang,
   onOpenAdmin,
@@ -47,20 +49,33 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="flex items-center justify-between gap-3">
         {/* Brand / Logo */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20">
-            <Cloud className="w-6 h-6 stroke-[2.5]" />
-            <span className="absolute -bottom-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
-            </span>
-          </div>
+          {siteSettings?.siteLogoUrl ? (
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-cyan-400/50 shadow-lg shadow-cyan-500/20 bg-slate-950">
+              <img
+                src={siteSettings.siteLogoUrl}
+                alt={siteSettings.siteName}
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
+              </span>
+            </div>
+          ) : (
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20">
+              <Cloud className="w-6 h-6 stroke-[2.5]" />
+              <span className="absolute -bottom-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+              </span>
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-lg font-black tracking-tight text-white">
-                Bashar
+                {siteSettings?.siteName || 'Bashar'}
               </span>
               <span className="px-1.5 py-0.5 text-[11px] font-black tracking-wide rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 uppercase shadow-sm">
-                1000GB
+                {siteSettings?.siteBadge || '1000GB'}
               </span>
               <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 text-[10px] border border-emerald-800/40 font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -68,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              {lang === 'bn' ? '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট • অনলাইন ডাটাবেস' : '1 TB Cloud Vault • Firestore Connected'}
+              {lang === 'bn' ? (siteSettings?.taglineBn || '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট • অনলাইন ডাটাবেস') : (siteSettings?.taglineEn || '1 TB Cloud Vault • Firestore Connected')}
             </p>
           </div>
         </div>

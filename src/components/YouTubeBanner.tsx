@@ -1,14 +1,22 @@
 import React, { useState } from 'react';
 import { Youtube, ExternalLink, Sparkles, Heart } from 'lucide-react';
+import { SiteSettings } from '../types/storage';
 
 interface YouTubeBannerProps {
   lang: 'bn' | 'en';
+  siteSettings?: SiteSettings;
 }
 
-export const YouTubeBanner: React.FC<YouTubeBannerProps> = ({ lang }) => {
+export const YouTubeBanner: React.FC<YouTubeBannerProps> = ({ lang, siteSettings }) => {
   const [isDismissed, setIsDismissed] = useState(false);
-  const channelUrl = 'http://www.youtube.com/@BasharGojolStudio';
-  const promoTextBn = '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸';
+  
+  if (siteSettings && siteSettings.showYoutubeBanner === false) {
+    return null;
+  }
+
+  const channelUrl = siteSettings?.youtubeChannelUrl || 'http://www.youtube.com/@BasharGojolStudio';
+  const channelName = siteSettings?.youtubeChannelName || 'Bashar Gojol Studio';
+  const promoTextBn = siteSettings?.youtubeBannerTextBn || '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸';
   const promoTextEn = '❤️ Please kindly support us by subscribing to our channel. 🌸';
 
   if (isDismissed) {
@@ -56,7 +64,7 @@ export const YouTubeBanner: React.FC<YouTubeBannerProps> = ({ lang }) => {
             <div className="flex items-center gap-2 justify-center md:justify-start">
               <span className="px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5 text-red-400" />
-                Bashar Gojol Studio
+                {channelName}
               </span>
               <span className="text-[11px] text-slate-400 font-mono hidden md:inline">@BasharGojolStudio</span>
             </div>

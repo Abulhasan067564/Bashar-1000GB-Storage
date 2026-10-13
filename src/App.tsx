@@ -7,7 +7,9 @@ import {
   ViewMode, 
   FileCategory,
   AdminCredentials,
-  ClipboardState
+  ClipboardState,
+  SiteSettings,
+  DEFAULT_SITE_SETTINGS
 } from './types/storage';
 import { 
   getAllStoredFiles, 
@@ -29,6 +31,8 @@ import {
   testConnection,
   saveAdminCredentialsToFirestore,
   loadAdminCredentialsFromFirestore,
+  saveSiteSettingsToFirestore,
+  loadSiteSettingsFromFirestore,
   isQuotaExceeded,
   subscribeQuotaExceeded,
   getDeletedUserIds,
@@ -63,6 +67,7 @@ import {
   Trash2,
   ArchiveRestore,
   AlertTriangle,
+  Bell,
   X
 } from 'lucide-react';
 
@@ -76,9 +81,36 @@ const STORAGE_USERS_KEY = 'bashar_1000gb_registered_users';
 const STORAGE_SESSION_KEY = 'bashar_1000gb_active_uid';
 const STORAGE_ADMIN_CREDS_KEY = 'bashar_1000gb_admin_creds';
 const STORAGE_ADMIN_SESSION_KEY = 'bashar_1000gb_admin_session';
+const STORAGE_SITE_SETTINGS_KEY = 'bashar_site_settings';
 
 export default function App() {
   const [lang, setLang] = useState<'bn' | 'en'>('bn');
+
+  // Global Website Settings (Branding, Logo, Name, Subtitle, YouTube Channel)
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_SITE_SETTINGS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_SITE_SETTINGS;
+  });
+  const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
+
+  // Sync browser title and favicon with customized site name & uploaded logo
+  useEffect(() => {
+    if (siteSettings?.siteName) {
+      document.title = `${siteSettings.siteName} ${siteSettings.siteBadge || '1000GB'} - Cloud Storage`;
+    }
+    if (siteSettings?.siteLogoUrl) {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = siteSettings.siteLogoUrl;
+    }
+  }, [siteSettings]);
 
   // Admin View State ('none' | 'login' | 'dashboard')
   const [adminView, setAdminView] = useState<'none' | 'login' | 'dashboard'>('none');
@@ -216,6 +248,13 @@ export default function App() {
           });
         }
 
+        // Sync site settings / branding from Firestore
+        const cloudSettings = await loadSiteSettingsFromFirestore();
+        if (cloudSettings) {
+          setSiteSettings(cloudSettings);
+          localStorage.setItem(STORAGE_SITE_SETTINGS_KEY, JSON.stringify(cloudSettings));
+        }
+
         // Sync admin credentials
         const cloudAdmin = await loadAdminCredentialsFromFirestore();
         if (cloudAdmin && cloudAdmin.username !== 'admin') {
@@ -237,6 +276,14 @@ export default function App() {
     }
     initCloudDb();
   }, []);
+
+  // Update site settings by Admin
+  const handleUpdateSiteSettings = async (newSettings: SiteSettings) => {
+    setSiteSettings(newSettings);
+    localStorage.setItem(STORAGE_SITE_SETTINGS_KEY, JSON.stringify(newSettings));
+    await saveSiteSettingsToFirestore(newSettings);
+    showToast(lang === 'bn' ? 'ওয়েবসাইটের লোগো, নাম ও সমস্ত সেটিংস সফলভাবে ক্লাউডে সংরক্ষিত হয়েছে!' : 'Website settings & logo saved to Cloud successfully!');
+  };
 
   // Admin login success
   const handleAdminLoginSuccess = (admin: AdminCredentials) => {
@@ -313,6 +360,11 @@ export default function App() {
       if (cloudAdmin) {
         setAdminCredentials(cloudAdmin);
         localStorage.setItem(STORAGE_ADMIN_CREDS_KEY, JSON.stringify(cloudAdmin));
+      }
+      const cloudSettings = await loadSiteSettingsFromFirestore();
+      if (cloudSettings) {
+        setSiteSettings(cloudSettings);
+        localStorage.setItem(STORAGE_SITE_SETTINGS_KEY, JSON.stringify(cloudSettings));
       }
     } catch (err) {
       console.error('Error refreshing cloud data:', err);
@@ -1126,6 +1178,8 @@ export default function App() {
       <AdminDashboard
         usersList={usersList}
         adminCredentials={adminCredentials}
+        siteSettings={siteSettings}
+        onUpdateSiteSettings={handleUpdateSiteSettings}
         onUpdateUsersList={handleUpdateUsersList}
         onUpdateAdminCredentials={handleUpdateAdminCredentials}
         onDeleteUser={handleDeleteUserByAdmin}
@@ -1155,8 +1209,34 @@ export default function App() {
           </div>
         )}
 
+        {/* Global Announcement Notice Banner for visitors */}
+        {siteSettings?.announcementNotice && !isNoticeDismissed && (
+          <div className={`px-4 py-2 border-b flex items-center justify-between text-xs font-semibold backdrop-blur-md relative z-40 transition ${
+            siteSettings.noticeType === 'alert'
+              ? 'bg-rose-950/90 border-rose-800 text-rose-200'
+              : siteSettings.noticeType === 'warning'
+              ? 'bg-amber-950/90 border-amber-800 text-amber-200'
+              : siteSettings.noticeType === 'success'
+              ? 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+              : 'bg-cyan-950/90 border-cyan-800 text-cyan-200'
+          }`}>
+            <div className="flex items-center gap-2 max-w-6xl mx-auto flex-1 justify-center text-center">
+              <Bell className="w-4 h-4 shrink-0 animate-bounce" />
+              <span className="tracking-wide">{siteSettings.announcementNotice}</span>
+            </div>
+            <button
+              onClick={() => setIsNoticeDismissed(true)}
+              className="p-1 hover:bg-black/30 rounded-lg text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+              title="Dismiss notice"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <AuthScreen
           usersList={usersList}
+          siteSettings={siteSettings}
           onLoginSuccess={handleLoginSuccess}
           onUpdateUsersList={handleUpdateUsersList}
           lang={lang}
@@ -1184,9 +1264,35 @@ export default function App() {
         </div>
       )}
 
+      {/* Global Announcement Notice Banner for logged in users */}
+      {siteSettings?.announcementNotice && !isNoticeDismissed && (
+        <div className={`px-4 py-2 border-b flex items-center justify-between text-xs font-semibold backdrop-blur-md relative z-40 transition ${
+          siteSettings.noticeType === 'alert'
+            ? 'bg-rose-950/90 border-rose-800 text-rose-200'
+            : siteSettings.noticeType === 'warning'
+            ? 'bg-amber-950/90 border-amber-800 text-amber-200'
+            : siteSettings.noticeType === 'success'
+            ? 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+            : 'bg-cyan-950/90 border-cyan-800 text-cyan-200'
+        }`}>
+          <div className="flex items-center gap-2 max-w-6xl mx-auto flex-1 justify-center text-center">
+            <Bell className="w-4 h-4 shrink-0 animate-bounce" />
+            <span className="tracking-wide">{siteSettings.announcementNotice}</span>
+          </div>
+          <button
+            onClick={() => setIsNoticeDismissed(true)}
+            className="p-1 hover:bg-black/30 rounded-lg text-slate-300 hover:text-white transition cursor-pointer shrink-0"
+            title="Dismiss notice"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Main Navbar */}
       <Navbar
         currentUser={currentUser}
+        siteSettings={siteSettings}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileOpen(true)}
@@ -1203,7 +1309,7 @@ export default function App() {
       />
 
       {/* YouTube Gojol Studio Banner */}
-      <YouTubeBanner lang={lang} />
+      <YouTubeBanner lang={lang} siteSettings={siteSettings} />
 
       {/* Body Layout: Sidebar + Main File Manager */}
       <div className="flex flex-1 overflow-hidden">

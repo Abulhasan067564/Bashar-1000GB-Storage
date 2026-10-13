@@ -30,9 +30,11 @@ import {
   Camera,
   Image as ImageIcon,
   Upload,
-  X
+  X,
+  Sliders
 } from 'lucide-react';
-import { UserAccount, AdminCredentials } from '../../types/storage';
+import { UserAccount, AdminCredentials, SiteSettings } from '../../types/storage';
+import { WebsiteSettingsModal } from './WebsiteSettingsModal';
 
 const PRESET_LOGOS = [
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
@@ -46,6 +48,8 @@ const PRESET_LOGOS = [
 interface AdminDashboardProps {
   usersList: UserAccount[];
   adminCredentials: AdminCredentials;
+  siteSettings: SiteSettings;
+  onUpdateSiteSettings: (settings: SiteSettings) => Promise<void> | void;
   onUpdateUsersList: (users: UserAccount[]) => void;
   onUpdateAdminCredentials: (creds: AdminCredentials) => void;
   onDeleteUser: (userId: string) => Promise<void>;
@@ -58,6 +62,8 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   usersList,
   adminCredentials,
+  siteSettings,
+  onUpdateSiteSettings,
   onUpdateUsersList,
   onUpdateAdminCredentials,
   onDeleteUser,
@@ -66,6 +72,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData,
   lang
 }) => {
+  // Website Customization Modal state
+  const [isSiteSettingsOpen, setIsSiteSettingsOpen] = useState(false);
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
@@ -452,12 +461,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex items-center justify-between gap-3">
           {/* Brand & Badge */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-red-500 to-amber-500 text-slate-950 shadow-lg shadow-rose-500/20">
-              <ShieldCheck className="w-6 h-6 stroke-[2.5]" />
-            </div>
+            {siteSettings?.siteLogoUrl ? (
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-rose-500/50 shadow-lg shadow-rose-500/20 bg-slate-950 shrink-0">
+                <img
+                  src={siteSettings.siteLogoUrl}
+                  alt={siteSettings.siteName}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-red-500 to-amber-500 text-slate-950 shadow-lg shadow-rose-500/20">
+                <ShieldCheck className="w-6 h-6 stroke-[2.5]" />
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-black tracking-tight text-white">Bashar 1000GB</span>
+                <span className="text-lg font-black tracking-tight text-white">
+                  {siteSettings?.siteName || 'Bashar'} {siteSettings?.siteBadge || '1000GB'}
+                </span>
                 <span className="px-2 py-0.5 text-[11px] font-black tracking-wide rounded-md bg-rose-600 text-white uppercase shadow-sm">
                   Admin Panel
                 </span>
@@ -475,7 +496,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2">
+            {/* Website Settings & Logo Customization */}
+            <button
+              onClick={() => setIsSiteSettingsOpen(true)}
+              className="px-3 py-2 rounded-xl bg-gradient-to-r from-cyan-600/30 via-sky-600/30 to-blue-600/30 hover:from-cyan-600/40 hover:to-blue-600/40 border border-cyan-500/50 text-xs font-bold text-cyan-200 hover:text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm shadow-cyan-950"
+              title={lang === 'bn' ? 'ওয়েবসাইটের লোগো আপলোড, নাম পরিবর্তন ও সেটিংস' : 'Website Logo, Name & Branding Settings'}
+            >
+              <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{lang === 'bn' ? 'ওয়েবসাইট সেটিংস ও লোগো' : 'Website Settings & Logo'}</span>
+            </button>
+
             {/* Refresh Data */}
             <button
               onClick={handleRefresh}
@@ -520,6 +551,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+        {/* Website Branding Status Banner */}
+        <div className="bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/40 border border-cyan-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            {siteSettings.siteLogoUrl ? (
+              <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-cyan-400/80 shadow-lg shadow-cyan-500/20 bg-slate-950 shrink-0">
+                <img src={siteSettings.siteLogoUrl} alt="Site Logo" className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 flex items-center justify-center text-slate-950 shadow-lg shadow-cyan-500/20 shrink-0">
+                <Cloud className="w-6 h-6 stroke-[2.5]" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  {siteSettings.siteName}
+                </h3>
+                <span className="px-2 py-0.5 rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 text-xs font-black uppercase">
+                  {siteSettings.siteBadge}
+                </span>
+                <span className="text-[10px] text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800/40 font-mono">
+                  Active Branding
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {lang === 'bn' ? siteSettings.taglineBn : siteSettings.taglineEn}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsSiteSettingsOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 transition cursor-pointer self-stretch sm:self-auto justify-center"
+          >
+            <Sliders className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'লোগো ও নাম পরিবর্তন করুন' : 'Change Logo & Name'}</span>
+          </button>
+        </div>
         
         {/* Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1518,6 +1588,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Website Customization Settings & Logo Modal */}
+      <WebsiteSettingsModal
+        isOpen={isSiteSettingsOpen}
+        onClose={() => setIsSiteSettingsOpen(false)}
+        siteSettings={siteSettings}
+        onSaveSettings={onUpdateSiteSettings}
+        lang={lang}
+      />
     </div>
   );
 };
