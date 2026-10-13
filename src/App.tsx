@@ -28,6 +28,7 @@ import {
   saveMultipleFilesToFirestore,
   deleteFileFromFirestore, 
   loadUserFilesFromFirestore,
+  loadFileChunksFromFirestore,
   testConnection,
   saveAdminCredentialsToFirestore,
   loadAdminCredentialsFromFirestore,
@@ -387,55 +388,80 @@ export default function App() {
   };
 
   // Seamless cross-browser and cross-device sync between local IndexedDB and Firestore Cloud
-  const syncUserFiles = async (userId: string, isManual = false) => {
+  const syncUserFiles = async (userId: string, isManual = false, userEmailOrPhone?: string) => {
     setIsSyncingFiles(true);
     try {
+      const activePhoneOrEmail = (userEmailOrPhone || currentUser?.emailOrPhone || '').trim();
+
       // 1. Fetch locally cached files
       const localStored = await getAllStoredFiles();
-      const userLocals = localStored.filter(f => !f.ownerId || f.ownerId === userId || f.ownerId === 'default');
+      const userLocals = localStored.filter(f => 
+        !f.ownerId || 
+        f.ownerId === userId || 
+        f.ownerId === 'default' || 
+        (activePhoneOrEmail && f.ownerPhone === activePhoneOrEmail)
+      );
       const fileMap = new Map<string, StorageFile>();
       userLocals.forEach(f => {
         if (!f.ownerId || f.ownerId === 'default') {
           f.ownerId = userId;
         }
+        if (!f.ownerPhone && activePhoneOrEmail) {
+          f.ownerPhone = activePhoneOrEmail;
+        }
         fileMap.set(f.id, f);
       });
 
-      // 2. Fetch cloud files from Firestore
-      const cloudFiles = await loadUserFilesFromFirestore(userId);
+      // 2. Fetch cloud files from Firestore (Dual-Key: matches by userId AND phone number)
+      const cloudFiles = await loadUserFilesFromFirestore(userId, activePhoneOrEmail);
 
       let hasNewCloudFiles = false;
       const filesToPushToCloud: StorageFile[] = [];
 
       // Check files from cloud
-      cloudFiles.forEach(cf => {
+      for (const cf of cloudFiles) {
         const local = fileMap.get(cf.id);
         if (!local) {
           // File uploaded from another browser/computer/phone!
-          fileMap.set(cf.id, cf);
+          let finalDataUrl = cf.dataUrl;
+          if (!finalDataUrl && (cf as any).hasChunks && (cf as any).totalChunks) {
+            try {
+              const assembled = await loadFileChunksFromFirestore(cf.id, (cf as any).totalChunks);
+              if (assembled) finalDataUrl = assembled;
+            } catch (chunkErr) {
+              console.warn('Chunk assembly notice:', chunkErr);
+            }
+          }
+          fileMap.set(cf.id, { ...cf, dataUrl: finalDataUrl });
           hasNewCloudFiles = true;
         } else {
           // If local has no dataUrl or cloud has newer dataUrl
           if (!local.dataUrl && cf.dataUrl) {
             fileMap.set(cf.id, { ...local, dataUrl: cf.dataUrl });
             hasNewCloudFiles = true;
+          } else if (!local.dataUrl && (cf as any).hasChunks && (cf as any).totalChunks) {
+            try {
+              const assembled = await loadFileChunksFromFirestore(cf.id, (cf as any).totalChunks);
+              if (assembled) {
+                fileMap.set(cf.id, { ...local, dataUrl: assembled });
+                hasNewCloudFiles = true;
+              }
+            } catch {}
           }
           if (new Date(cf.updatedAt).getTime() > new Date(local.updatedAt).getTime()) {
             fileMap.set(cf.id, { ...cf, dataUrl: cf.dataUrl || local.dataUrl });
             hasNewCloudFiles = true;
           }
         }
-      });
-
-      // If local files are not yet in Firestore or cloud doc was missing dataUrl (and quota is OK)
-      if (!isQuotaExceeded() && cloudFiles.length > 0) {
-        userLocals.forEach(lf => {
-          const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
-          if (!cloudMatch || (!cloudMatch.dataUrl && lf.dataUrl && lf.dataUrl.length < 850000)) {
-            filesToPushToCloud.push(lf);
-          }
-        });
       }
+
+      // If local files are not yet in Firestore, push them
+      userLocals.forEach(lf => {
+        const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
+        if (!cloudMatch) {
+          filesToPushToCloud.push(lf);
+        }
+      });
 
       const mergedFiles = Array.from(fileMap.values());
       // Sort newest first
@@ -447,18 +473,16 @@ export default function App() {
         await saveMultipleStoredFiles(mergedFiles);
       }
 
-      // Back up local files to cloud only if quota is healthy
-      if (filesToPushToCloud.length > 0 && !isQuotaExceeded()) {
-        for (const fileToPush of filesToPushToCloud) {
-          saveFileToFirestore(fileToPush).catch(() => {});
-        }
+      // Back up local files to cloud
+      if (filesToPushToCloud.length > 0) {
+        saveMultipleFilesToFirestore(filesToPushToCloud, activePhoneOrEmail).catch(() => {});
       }
 
       if (isManual) {
         showToast(
-          isQuotaExceeded()
-            ? (lang === 'bn' ? 'ফাইলগুলো নিরাপদে লোকাল স্টোরেজে সংরক্ষিত রয়েছে।' : 'Files safely preserved in local storage.')
-            : (lang === 'bn' ? 'ক্লাউডের সাথে সকল ফাইল সফলভাবে সিঙ্ক হয়েছে!' : 'All files synced with cloud successfully!')
+          lang === 'bn' 
+            ? 'ক্লাউডের সাথে সকল ফাইল সফলভাবে সিঙ্ক হয়েছে!' 
+            : 'All files synced with cloud successfully!'
         );
       }
     } catch (err) {
@@ -477,7 +501,7 @@ export default function App() {
         ? `স্বাগতম, ${user.name}! প্রোফাইলে গিয়ে লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড সেট করতে পারেন।` 
         : `Welcome, ${user.name}! Customize your logo, name, birthday & password in Profile.`
     );
-    await syncUserFiles(user.id);
+    await syncUserFiles(user.id, false, user.emailOrPhone);
   };
 
   const handleLogout = () => {
@@ -546,10 +570,18 @@ export default function App() {
       try {
         const stored = await getAllStoredFiles();
         // Fast local render if available
-        const userFiles = stored.filter(f => !f.ownerId || f.ownerId === currentUser.id || f.ownerId === 'default');
+        const userFiles = stored.filter(f => 
+          !f.ownerId || 
+          f.ownerId === currentUser.id || 
+          f.ownerId === 'default' || 
+          (currentUser.emailOrPhone && f.ownerPhone === currentUser.emailOrPhone)
+        );
         userFiles.forEach(f => {
           if (!f.ownerId || f.ownerId === 'default') {
             f.ownerId = currentUser.id;
+          }
+          if (!f.ownerPhone && currentUser.emailOrPhone) {
+            f.ownerPhone = currentUser.emailOrPhone;
           }
         });
         if (userFiles.length > 0) {
@@ -559,11 +591,11 @@ export default function App() {
       } catch (err) {
         console.error('Local storage load notice:', err);
       }
-      // Cross-browser cloud sync
-      await syncUserFiles(currentUser.id);
+      // Cross-browser cloud sync with phone matching
+      await syncUserFiles(currentUser.id, false, currentUser.emailOrPhone);
     }
     loadData();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.emailOrPhone]);
 
   // Compute Storage Stats (out of 1000 GB)
   const stats: StorageStats = useMemo(() => {
@@ -1041,9 +1073,11 @@ export default function App() {
   // Files Uploaded callback (Guaranteed persistent storage to both IndexedDB and LocalStorage)
   const handleFilesUploaded = async (newFiles: StorageFile[]) => {
     const ownerId = currentUser ? currentUser.id : 'default';
+    const ownerPhone = currentUser ? currentUser.emailOrPhone : '';
     const enrichedFiles = newFiles.map(f => ({
       ...f,
-      ownerId: f.ownerId || ownerId
+      ownerId: f.ownerId || ownerId,
+      ownerPhone: f.ownerPhone || ownerPhone
     }));
 
     // 1. Instant optimistic state update
@@ -1064,7 +1098,7 @@ export default function App() {
     }
 
     // 3. Guaranteed permanent cloud collection to Firestore Cloud
-    saveMultipleFilesToFirestore(enrichedFiles).catch((err) => {
+    saveMultipleFilesToFirestore(enrichedFiles, ownerPhone).catch((err) => {
       console.warn('Firestore cloud sync notice:', err);
     });
 

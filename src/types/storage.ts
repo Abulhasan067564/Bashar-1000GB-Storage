@@ -26,6 +26,7 @@ export interface StorageFile {
   };
   tags?: string[];
   ownerId: string;
+  ownerPhone?: string;
   folderId?: string | null; // ID of parent folder if inside one, null/undefined if root
   isFolder?: boolean; // true if this item is a folder
 }

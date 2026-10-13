@@ -294,44 +294,101 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
   }
 }
 
-// Save or update file metadata & content to Firestore
-export async function saveFileToFirestore(file: StorageFile): Promise<void> {
-  if (quotaExceededState) return;
+// Save chunks to Firestore for larger files (> 750KB)
+export async function saveFileChunksToFirestore(fileId: string, dataUrl: string): Promise<number> {
+  const CHUNK_SIZE = 750000;
+  const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
+  try {
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkStr = dataUrl.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      await setDoc(doc(db, 'file_chunks', `${fileId}_${i}`), {
+        fileId,
+        chunkIndex: i,
+        totalChunks,
+        data: chunkStr,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    return totalChunks;
+  } catch (err) {
+    console.warn('Error saving file chunks to Firestore:', err);
+    return 0;
+  }
+}
+
+// Load chunks from Firestore and reconstruct original dataUrl
+export async function loadFileChunksFromFirestore(fileId: string, totalChunks: number): Promise<string | null> {
+  try {
+    const chunkPromises: Promise<any>[] = [];
+    for (let i = 0; i < totalChunks; i++) {
+      chunkPromises.push(getDoc(doc(db, 'file_chunks', `${fileId}_${i}`)));
+    }
+    const snaps = await Promise.all(chunkPromises);
+    const chunks: string[] = [];
+    for (const snap of snaps) {
+      if (snap.exists() && snap.data()?.data) {
+        chunks.push(snap.data().data);
+      } else {
+        return null;
+      }
+    }
+    return chunks.join('');
+  } catch (err) {
+    console.warn('Error reconstructing file from chunks:', err);
+    return null;
+  }
+}
+
+// Save or update file metadata & content to Firestore (Cross-device aware)
+export async function saveFileToFirestore(file: StorageFile, userPhoneOrEmail?: string): Promise<void> {
   const path = `files/${file.id}`;
   try {
-    // Note: Store metadata and payload. If file data fits inside doc limit (< 850KB),
-    // save dataUrl directly so files, passwords, notes, and photos sync across all devices & browsers.
+    const cleanPhone = (file.ownerPhone || userPhoneOrEmail || '').trim();
     const filePayload: Record<string, any> = {
       id: file.id,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      category: file.category,
-      uploadedAt: file.uploadedAt,
-      updatedAt: file.updatedAt,
-      isStarred: file.isStarred,
-      isEncrypted: file.isEncrypted,
+      name: file.name || 'Untitled',
+      size: Number(file.size) || 0,
+      type: file.type || 'application/octet-stream',
+      category: file.category || 'other',
+      uploadedAt: file.uploadedAt || new Date().toISOString(),
+      updatedAt: file.updatedAt || new Date().toISOString(),
+      isStarred: Boolean(file.isStarred),
+      isEncrypted: Boolean(file.isEncrypted),
       encryptionHint: file.encryptionHint || '',
-      inTrash: file.inTrash,
-      ownerId: file.ownerId,
+      inTrash: Boolean(file.inTrash),
+      ownerId: file.ownerId || 'default',
+      ownerPhone: cleanPhone,
+      ownerEmailOrPhone: cleanPhone,
       shared: file.shared || { isShared: false }
     };
-    if (file.tags) {
+
+    if (file.tags && Array.isArray(file.tags)) {
       filePayload.tags = file.tags;
     }
     if (file.deletedAt) {
       filePayload.deletedAt = file.deletedAt;
     }
     if (file.folderId !== undefined) {
-      filePayload.folderId = file.folderId;
+      filePayload.folderId = file.folderId || null;
     }
     if (file.isFolder !== undefined) {
-      filePayload.isFolder = file.isFolder;
+      filePayload.isFolder = Boolean(file.isFolder);
     }
-    if (file.dataUrl && file.dataUrl.length < 850000) {
+
+    // Direct embed if under 750KB
+    if (file.dataUrl && file.dataUrl.length <= 750000) {
       filePayload.dataUrl = file.dataUrl;
+      filePayload.hasChunks = false;
+    } else if (file.dataUrl && file.dataUrl.length > 750000) {
+      // Chunked storage for larger files
+      const totalChunks = await saveFileChunksToFirestore(file.id, file.dataUrl);
+      if (totalChunks > 0) {
+        filePayload.hasChunks = true;
+        filePayload.totalChunks = totalChunks;
+      }
     }
-    await setDoc(doc(db, 'files', file.id), filePayload);
+
+    await setDoc(doc(db, 'files', file.id), filePayload, { merge: true });
   } catch (error) {
     if (isQuotaError(error)) {
       setQuotaExceeded(true);
@@ -341,43 +398,62 @@ export async function saveFileToFirestore(file: StorageFile): Promise<void> {
   }
 }
 
-// Fast batch save multiple files to Firestore in a single network round-trip
-export async function saveMultipleFilesToFirestore(files: StorageFile[]): Promise<void> {
-  if (files.length === 0 || quotaExceededState) return;
+// Fast batch save multiple files to Firestore in a single network round-trip with individual fallback
+export async function saveMultipleFilesToFirestore(files: StorageFile[], userPhoneOrEmail?: string): Promise<void> {
+  if (files.length === 0) return;
   const path = 'files/batch';
+  const cleanPhone = (userPhoneOrEmail || '').trim();
+
   try {
-    // Firestore supports up to 500 operations per batch
-    const BATCH_LIMIT = 450;
+    const BATCH_LIMIT = 50;
     for (let i = 0; i < files.length; i += BATCH_LIMIT) {
-      if (quotaExceededState) return;
       const slice = files.slice(i, i + BATCH_LIMIT);
       const batch = writeBatch(db);
       for (const file of slice) {
+        const phone = (file.ownerPhone || cleanPhone).trim();
         const filePayload: Record<string, any> = {
           id: file.id,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          category: file.category,
-          uploadedAt: file.uploadedAt,
-          updatedAt: file.updatedAt,
-          isStarred: file.isStarred,
-          isEncrypted: file.isEncrypted,
+          name: file.name || 'Untitled',
+          size: Number(file.size) || 0,
+          type: file.type || 'application/octet-stream',
+          category: file.category || 'other',
+          uploadedAt: file.uploadedAt || new Date().toISOString(),
+          updatedAt: file.updatedAt || new Date().toISOString(),
+          isStarred: Boolean(file.isStarred),
+          isEncrypted: Boolean(file.isEncrypted),
           encryptionHint: file.encryptionHint || '',
-          inTrash: file.inTrash,
-          ownerId: file.ownerId,
+          inTrash: Boolean(file.inTrash),
+          ownerId: file.ownerId || 'default',
+          ownerPhone: phone,
+          ownerEmailOrPhone: phone,
           shared: file.shared || { isShared: false }
         };
         if (file.tags) filePayload.tags = file.tags;
         if (file.deletedAt) filePayload.deletedAt = file.deletedAt;
-        if (file.folderId !== undefined) filePayload.folderId = file.folderId;
-        if (file.isFolder !== undefined) filePayload.isFolder = file.isFolder;
-        if (file.dataUrl && file.dataUrl.length < 850000) {
+        if (file.folderId !== undefined) filePayload.folderId = file.folderId || null;
+        if (file.isFolder !== undefined) filePayload.isFolder = Boolean(file.isFolder);
+
+        if (file.dataUrl && file.dataUrl.length <= 750000) {
           filePayload.dataUrl = file.dataUrl;
         }
-        batch.set(doc(db, 'files', file.id), filePayload);
+        batch.set(doc(db, 'files', file.id), filePayload, { merge: true });
       }
-      await batch.commit();
+
+      try {
+        await batch.commit();
+      } catch (batchErr) {
+        console.warn('Batch commit notice, writing files individually:', batchErr);
+        for (const file of slice) {
+          await saveFileToFirestore(file, userPhoneOrEmail).catch(() => {});
+        }
+      }
+
+      // Handle chunking for any files exceeding single doc limit
+      for (const file of slice) {
+        if (file.dataUrl && file.dataUrl.length > 750000) {
+          saveFileChunksToFirestore(file.id, file.dataUrl).catch(() => {});
+        }
+      }
     }
   } catch (error) {
     if (isQuotaError(error)) {
@@ -388,12 +464,15 @@ export async function saveMultipleFilesToFirestore(files: StorageFile[]): Promis
   }
 }
 
-// Delete file from Firestore
+// Delete file from Firestore and any chunks
 export async function deleteFileFromFirestore(fileId: string): Promise<void> {
-  if (quotaExceededState) return;
   const path = `files/${fileId}`;
   try {
     await deleteDoc(doc(db, 'files', fileId));
+    // Clean up potential chunks
+    for (let i = 0; i < 20; i++) {
+      deleteDoc(doc(db, 'file_chunks', `${fileId}_${i}`)).catch(() => {});
+    }
   } catch (error) {
     if (isQuotaError(error)) {
       setQuotaExceeded(true);
@@ -403,17 +482,54 @@ export async function deleteFileFromFirestore(fileId: string): Promise<void> {
   }
 }
 
-// Load user files from Firestore
-export async function loadUserFilesFromFirestore(userId: string): Promise<StorageFile[]> {
-  if (quotaExceededState) return [];
+// Load user files from Firestore (Dual-Key: matches by ownerId OR ownerPhone/email across all websites & devices)
+export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmail?: string): Promise<StorageFile[]> {
   const path = 'files';
+  const fileMap = new Map<string, StorageFile>();
+
   try {
-    const q = query(collection(db, path), where('ownerId', '==', userId));
-    const snapshot = await getDocs(q);
-    const list: StorageFile[] = [];
-    snapshot.forEach((d) => {
-      list.push(d.data() as StorageFile);
-    });
+    // 1. Query by ownerId
+    if (userId) {
+      const qById = query(collection(db, path), where('ownerId', '==', userId));
+      const snapById = await getDocs(qById);
+      snapById.forEach((d) => {
+        const file = d.data() as StorageFile;
+        if (file && file.id) {
+          fileMap.set(file.id, file);
+        }
+      });
+    }
+
+    // 2. Query by ownerPhone / ownerEmailOrPhone (Guarantees cross-device findability by number)
+    if (userPhoneOrEmail) {
+      const clean = userPhoneOrEmail.trim();
+      const norm = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
+
+      const queries = [
+        query(collection(db, path), where('ownerPhone', '==', clean)),
+        query(collection(db, path), where('ownerEmailOrPhone', '==', clean))
+      ];
+
+      if (norm !== clean) {
+        queries.push(query(collection(db, path), where('ownerPhone', '==', norm)));
+        queries.push(query(collection(db, path), where('ownerPhone', '==', '0' + norm)));
+        queries.push(query(collection(db, path), where('ownerPhone', '==', '+88' + norm)));
+      }
+
+      const results = await Promise.allSettled(queries.map(q => getDocs(q)));
+      results.forEach(res => {
+        if (res.status === 'fulfilled') {
+          res.value.forEach(d => {
+            const file = d.data() as StorageFile;
+            if (file && file.id) {
+              fileMap.set(file.id, file);
+            }
+          });
+        }
+      });
+    }
+
+    const list = Array.from(fileMap.values());
     return list;
   } catch (error) {
     if (isQuotaError(error)) {
@@ -421,7 +537,7 @@ export async function loadUserFilesFromFirestore(userId: string): Promise<Storag
       return [];
     }
     handleFirestoreError(error, OperationType.LIST, path);
-    return [];
+    return Array.from(fileMap.values());
   }
 }
 

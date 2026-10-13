@@ -57,7 +57,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   onToggleLang,
   onOpenAdminLogin
 }) => {
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('signup');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -185,31 +185,43 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       // Check locally first
       let existing = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
       
-      // Also check Firestore cloud in case created from another device
+      // Also check Firestore cloud in case created from another device or website URL
       if (!existing) {
         existing = (await findUserInFirestore(inputClean)) || undefined;
       }
 
       if (existing) {
         setIsSubmitting(false);
+        // If password matches existing account, directly log the user in!
+        if (password.trim() && existing.passwordHash === password.trim()) {
+          onLoginSuccess(existing);
+          return;
+        }
+
+        // Otherwise auto-switch to Login tab with phone/email prefilled
+        setMode('login');
         if (isInputEmail) {
           setError(
             lang === 'bn' 
-              ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই ইমেইল দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
-              : 'This email address is already registered! Multiple accounts cannot be created with the same email. Please sign in.'
+              ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে! অনুগ্রহ করে পাসওয়ার্ড দিয়ে সরাসরি লগইন করুন।' 
+              : 'This email is already registered! Please sign in with your password.'
           );
         } else {
           setError(
             lang === 'bn' 
-              ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই নম্বর দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
-              : 'This phone number is already registered! Multiple accounts cannot be created with the same number. Please sign in.'
+              ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে! অনুগ্রহ করে পাসওয়ার্ড দিয়ে সরাসরি লগইন করুন।' 
+              : 'This phone number is already registered! Please sign in with your password.'
           );
         }
         return;
       }
 
+      // Generate deterministic user ID based on phone or email
+      const normalizedIdent = inputClean.replace(/[\s\-\(\)\+]/g, '').toLowerCase();
+      const newUserId = 'u_' + (normalizedIdent || Date.now());
+
       const newUser: UserAccount = {
-        id: 'user-' + Date.now(),
+        id: newUserId,
         name: name.trim() || (lang === 'bn' ? 'ব্যবহারকারী' : 'User'),
         emailOrPhone: inputClean,
         secretName: secretName.trim().toLowerCase(),
