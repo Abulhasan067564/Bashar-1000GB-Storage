@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAccount, StorageStats } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube } from 'lucide-react';
+import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3 } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -8,6 +8,7 @@ interface NavbarProps {
   onLogout: () => void;
   onOpenProfile: () => void;
   onOpenUpload: () => void;
+  onOpenAnalytics?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   stats: StorageStats;
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onOpenProfile,
   onOpenUpload,
+  onOpenAnalytics,
   searchQuery,
   onSearchChange,
   stats,
@@ -105,6 +107,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               {lang === 'bn' ? 'ফাইল আপলোড' : 'Upload File'}
             </span>
           </button>
+
+          {/* Analytics Dashboard Button */}
+          {onOpenAnalytics && (
+            <button
+              onClick={onOpenAnalytics}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950"
+              title={lang === 'bn' ? 'স্টোরেজ অ্যানালিটিক্স ও গ্রোথ ট্রেন্ড' : 'Storage Analytics Dashboard'}
+            >
+              <BarChart3 className="w-4 h-4 text-cyan-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics'}</span>
+            </button>
+          )}
 
           {/* Admin Panel Button */}
           {onOpenAdmin && (

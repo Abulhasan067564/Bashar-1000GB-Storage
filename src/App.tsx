@@ -53,6 +53,7 @@ import { UploadModal } from './components/Modals/UploadModal';
 import { CreateFileModal } from './components/Modals/CreateFileModal';
 import { CreateFolderModal } from './components/Modals/CreateFolderModal';
 import { MoveCopyModal } from './components/Modals/MoveCopyModal';
+import { AnalyticsModal } from './components/Modals/AnalyticsModal';
 import { 
   Cloud, 
   Upload, 
@@ -174,6 +175,7 @@ export default function App() {
   const [targetFileIdsForModal, setTargetFileIdsForModal] = useState<string[]>([]);
   const [previewFile, setPreviewFile] = useState<StorageFile | null>(null);
   const [shareFile, setShareFile] = useState<StorageFile | null>(null);
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -1009,10 +1011,10 @@ export default function App() {
       console.warn('Storage persistence notice:', err);
     }
 
-    // 3. Background sync to Firestore Cloud (only when quota permits)
-    if (!isQuotaExceeded()) {
-      saveMultipleFilesToFirestore(enrichedFiles).catch(() => {});
-    }
+    // 3. Guaranteed permanent cloud collection to Firestore Cloud
+    saveMultipleFilesToFirestore(enrichedFiles).catch((err) => {
+      console.warn('Firestore cloud sync notice:', err);
+    });
 
     showToast(
       lang === 'bn' 
@@ -1189,6 +1191,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -1214,6 +1217,7 @@ export default function App() {
           sharedCount={sharedCount}
           vaultCount={vaultCount}
           lang={lang}
+          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         />
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}
@@ -1533,6 +1537,14 @@ export default function App() {
         onFilesUploaded={handleFilesUploaded}
         ownerId={currentUser.id}
         currentFolderId={currentFolderId}
+        lang={lang}
+      />
+
+      <AnalyticsModal
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
+        files={files}
+        stats={stats}
         lang={lang}
       />
     </div>

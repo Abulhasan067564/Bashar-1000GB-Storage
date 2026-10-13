@@ -6,7 +6,11 @@ import {
   isPhoneNumber, 
   getNormalizedAccountIdentifier 
 } from '../utils/accountValidation';
-import { removeDeletedUserId } from '../services/firebase';
+import { 
+  removeDeletedUserId,
+  saveUserToFirestore,
+  findUserInFirestore 
+} from '../services/firebase';
 import { 
   Cloud, 
   User, 
@@ -64,6 +68,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,7 +90,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -93,35 +100,59 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+    setIsLoggingIn(true);
 
-    if (!user) {
-      setError(
-        lang === 'bn' 
-          ? 'এই ইমেইল বা মোবাইল নম্বরের কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে সঠিক তথ্য দিন অথবা নতুন অ্যাকাউন্ট খুলুন।' 
-          : 'No account found with this email or phone. Please check or sign up.'
-      );
-      return;
+    try {
+      // 1. First look in local users list
+      let user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+
+      // 2. If not found locally (e.g. account created on another computer/browser/phone), check Firestore Cloud!
+      if (!user) {
+        const cloudUser = await findUserInFirestore(inputClean);
+        if (cloudUser) {
+          user = cloudUser;
+          // Merge to local usersList and cache so this device now knows about it
+          const updated = [...usersList.filter(u => u.id !== cloudUser.id), cloudUser];
+          onUpdateUsersList(updated);
+        }
+      }
+
+      if (!user) {
+        setError(
+          lang === 'bn' 
+            ? 'এই ইমেইল বা মোবাইল নম্বরের কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে সঠিক তথ্য দিন অথবা নতুন অ্যাকাউন্ট খুলুন।' 
+            : 'No account found with this email or phone. Please check or sign up.'
+        );
+        setIsLoggingIn(false);
+        return;
+      }
+
+      if (user.status === 'disabled') {
+        setError(
+          lang === 'bn'
+            ? 'আপনার অ্যাকাউন্টটি প্রশাসক দ্বারা সাময়িকভাবে নিষ্ক্রিয় করা হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
+            : 'Your account has been disabled by the administrator. Please contact admin.'
+        );
+        setIsLoggingIn(false);
+        return;
+      }
+
+      if (user.passwordHash !== password) {
+        setError(lang === 'bn' ? 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন।' : 'Incorrect password!');
+        setIsLoggingIn(false);
+        return;
+      }
+
+      setIsLoggingIn(false);
+      onLoginSuccess(user);
+    } catch (err) {
+      console.warn('Login lookup notice:', err);
+      setIsLoggingIn(false);
+      setError(lang === 'bn' ? 'লগইনে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Login failed. Please try again.');
     }
-
-    if (user.status === 'disabled') {
-      setError(
-        lang === 'bn'
-          ? 'আপনার অ্যাকাউন্টটি প্রশাসক দ্বারা সাময়িকভাবে নিষ্ক্রিয় করা হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
-          : 'Your account has been disabled by the administrator. Please contact admin.'
-      );
-      return;
-    }
-
-    if (user.passwordHash !== password) {
-      setError(lang === 'bn' ? 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন।' : 'Incorrect password!');
-      return;
-    }
-
-    onLoginSuccess(user);
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -145,51 +176,76 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    // STRICT CHECK: Ensure same email or same phone cannot be registered more than once
-    const existing = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
-    if (existing) {
-      if (isInputEmail) {
-        setError(
-          lang === 'bn' 
-            ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই ইমেইল দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
-            : 'This email address is already registered! Multiple accounts cannot be created with the same email. Please sign in.'
-        );
-      } else {
-        setError(
-          lang === 'bn' 
-            ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই নম্বর দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
-            : 'This phone number is already registered! Multiple accounts cannot be created with the same number. Please sign in.'
-        );
+    setIsSubmitting(true);
+
+    try {
+      // STRICT CHECK: Ensure same email or same phone cannot be registered more than once
+      // Check locally first
+      let existing = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+      
+      // Also check Firestore cloud in case created from another device
+      if (!existing) {
+        existing = (await findUserInFirestore(inputClean)) || undefined;
       }
-      return;
+
+      if (existing) {
+        setIsSubmitting(false);
+        if (isInputEmail) {
+          setError(
+            lang === 'bn' 
+              ? 'এই ইমেইল ঠিকানা দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই ইমেইল দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
+              : 'This email address is already registered! Multiple accounts cannot be created with the same email. Please sign in.'
+          );
+        } else {
+          setError(
+            lang === 'bn' 
+              ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে! একই নম্বর দিয়ে বারবার অ্যাকাউন্ট খোলা যাবে না। অনুগ্রহ করে লগইন করুন।' 
+              : 'This phone number is already registered! Multiple accounts cannot be created with the same number. Please sign in.'
+          );
+        }
+        return;
+      }
+
+      const newUser: UserAccount = {
+        id: 'user-' + Date.now(),
+        name: name.trim() || (lang === 'bn' ? 'ব্যবহারকারী' : 'User'),
+        emailOrPhone: inputClean,
+        secretName: secretName.trim().toLowerCase(),
+        passwordHash: password,
+        birthDate: birthDate.trim() || undefined,
+        customLogo: customLogo.trim() || undefined,
+        totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
+        status: 'active',
+        role: 'user',
+        createdAt: new Date().toISOString()
+      };
+
+      removeDeletedUserId(newUser.id);
+      
+      // GUARANTEED CLOUD WRITE: write directly to Firestore so Admin and all other browsers immediately see the new account
+      await saveUserToFirestore(newUser);
+
+      const updated = [...usersList.filter(u => u.id !== newUser.id), newUser];
+      onUpdateUsersList(updated);
+      setIsSubmitting(false);
+      onLoginSuccess(newUser);
+    } catch (err) {
+      console.warn('Sign up error:', err);
+      setIsSubmitting(false);
+      setError(lang === 'bn' ? 'অ্যাকাউন্ট তৈরি করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Account creation failed. Please try again.');
     }
-
-    const newUser: UserAccount = {
-      id: 'user-' + Date.now(),
-      name: name.trim() || (lang === 'bn' ? 'ব্যবহারকারী' : 'User'),
-      emailOrPhone: inputClean,
-      secretName: secretName.trim().toLowerCase(),
-      passwordHash: password,
-      birthDate: birthDate.trim() || undefined,
-      customLogo: customLogo.trim() || undefined,
-      totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
-      status: 'active',
-      role: 'user',
-      createdAt: new Date().toISOString()
-    };
-
-    removeDeletedUserId(newUser.id);
-    const updated = [...usersList, newUser];
-    onUpdateUsersList(updated);
-    onLoginSuccess(newUser);
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     const inputClean = emailOrPhone.trim();
-    const user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+    let user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
+
+    if (!user) {
+      user = (await findUserInFirestore(inputClean)) || undefined;
+    }
 
     if (!user) {
       setError(lang === 'bn' ? 'এই একাউন্টটি খুঁজে পাওয়া যায়নি।' : 'Account not found.');
@@ -206,13 +262,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const updated = usersList.map(u => {
-      if (u.id === user.id) {
-        return { ...u, passwordHash: newPassword };
-      }
-      return u;
-    });
+    const updatedUser = { ...user, passwordHash: newPassword };
+    await saveUserToFirestore(updatedUser);
 
+    const updated = usersList.map(u => (u.id === user.id ? updatedUser : u));
     onUpdateUsersList(updated);
     setSuccess(lang === 'bn' ? 'পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! এখন লগইন করুন।' : 'Password updated successfully! You can login now.');
     setTimeout(() => {
@@ -520,9 +573,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer text-xs sm:text-sm"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer text-xs sm:text-sm disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {lang === 'bn' ? '১০০০ জিবি একাউন্ট তৈরি করুন' : 'Create 1000GB Account'}
+                {isSubmitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>{lang === 'bn' ? 'ক্লাউডে একাউন্ট তৈরি হচ্ছে...' : 'Creating Cloud Account...'}</span>
+                  </>
+                ) : (
+                  <span>{lang === 'bn' ? '১০০০ জিবি একাউন্ট তৈরি করুন' : 'Create 1000GB Account'}</span>
+                )}
               </button>
             </form>
           )}
@@ -582,9 +643,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer text-xs sm:text-sm"
+                disabled={isLoggingIn}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-3 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer text-xs sm:text-sm disabled:opacity-60 flex items-center justify-center gap-2"
               >
-                {lang === 'bn' ? 'লগইন করুন ও প্রবেশ করুন' : 'Sign In'}
+                {isLoggingIn ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>{lang === 'bn' ? 'ক্লাউড থেকে যাচাই করা হচ্ছে...' : 'Verifying from Cloud...'}</span>
+                  </>
+                ) : (
+                  <span>{lang === 'bn' ? 'লগইন করুন ও প্রবেশ করুন' : 'Sign In'}</span>
+                )}
               </button>
             </form>
           )}

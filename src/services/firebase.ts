@@ -194,7 +194,6 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
   if (deletedIds.includes(user.id)) {
     return;
   }
-  if (quotaExceededState) return;
   const path = `users/${user.id}`;
   try {
     await setDoc(doc(db, 'users', user.id), {
@@ -205,8 +204,8 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
       passwordHash: user.passwordHash,
       birthDate: user.birthDate || '',
       customLogo: user.customLogo || '',
-      totalStorageBytes: user.totalStorageBytes,
-      createdAt: user.createdAt,
+      totalStorageBytes: user.totalStorageBytes || (1000 * 1024 * 1024 * 1024),
+      createdAt: user.createdAt || new Date().toISOString(),
       status: user.status || 'active',
       role: user.role || 'user',
       lastLoginAt: user.lastLoginAt || ''
@@ -220,9 +219,40 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
   }
 }
 
+// Direct lookup for user in Firestore across any browser or device
+export async function findUserInFirestore(identifier: string): Promise<UserAccount | null> {
+  const clean = identifier.trim().toLowerCase();
+  if (!clean) return null;
+  const deletedIds = new Set(getDeletedUserIds());
+
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    let found: UserAccount | null = null;
+    snapshot.forEach((d) => {
+      const u = d.data() as UserAccount;
+      if (u && u.id && !deletedIds.has(u.id)) {
+        const uEmailOrPhone = (u.emailOrPhone || '').trim().toLowerCase();
+        // Remove spaces, dashes, +88 prefix for phone comparison
+        const normU = uEmailOrPhone.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
+        const normInput = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
+        if (normU === normInput || uEmailOrPhone === clean) {
+          found = u;
+        }
+      }
+    });
+    return found;
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return null;
+    }
+    console.warn('Notice querying user in Firestore:', error);
+    return null;
+  }
+}
+
 // Load users from Firestore
 export async function loadUsersFromFirestore(): Promise<UserAccount[]> {
-  if (quotaExceededState) return [];
   const path = 'users';
   try {
     const snapshot = await getDocs(collection(db, path));

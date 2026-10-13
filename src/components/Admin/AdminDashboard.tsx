@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   ShieldCheck, 
@@ -111,6 +111,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
   };
+
+  // Auto-refresh users list from Firestore on mount and periodically so newly signed-up accounts appear immediately
+  useEffect(() => {
+    if (onRefreshData) {
+      onRefreshData().catch(() => {});
+      const interval = setInterval(() => {
+        onRefreshData().catch(() => {});
+      }, 8000);
+      return () => clearInterval(interval);
+    }
+  }, [onRefreshData]);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);

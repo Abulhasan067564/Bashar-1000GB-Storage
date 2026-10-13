@@ -6,7 +6,8 @@ import {
   Share2, 
   Lock, 
   Trash2, 
-  HardDrive
+  HardDrive,
+  BarChart3
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,6 +19,7 @@ interface SidebarProps {
   sharedCount: number;
   vaultCount: number;
   lang: 'bn' | 'en';
+  onOpenAnalytics?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -28,7 +30,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   starredCount,
   sharedCount,
   vaultCount,
-  lang
+  lang,
+  onOpenAnalytics
 }) => {
   const formatStorage = (bytes: number) => {
     const mb = bytes / (1024 * 1024);
@@ -135,6 +138,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>{formatStorage(stats.usedBytes)} {lang === 'bn' ? 'ব্যবহৃত' : 'used'}</span>
             <span className="text-slate-500">{(1000 - usedGb).toFixed(1)} GB {lang === 'bn' ? 'বাকি' : 'free'}</span>
           </div>
+
+          {onOpenAnalytics && (
+            <button
+              onClick={onOpenAnalytics}
+              className="w-full mt-2 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 border border-cyan-500/30 text-cyan-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950/40"
+            >
+              <BarChart3 className="w-4 h-4 text-cyan-400" />
+              <span>{lang === 'bn' ? 'অ্যানালিটিক্স ড্যাশবোর্ড' : 'Analytics Dashboard'}</span>
+            </button>
+          )}
         </div>
       </div>
     </aside>
