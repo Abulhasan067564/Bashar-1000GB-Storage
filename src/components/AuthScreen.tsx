@@ -767,8 +767,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       {/* Footer */}
       <footer className="relative z-10 py-3.5 px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-800/40 bg-slate-950/60">
-        <div>
-          Bashar 1000GB Cloud Storage • 1000 GB High Security Vault
+        <div className="truncate max-w-md">
+          {siteSettings?.footerCopyright || `${siteSettings?.siteName || 'Bashar'} ${siteSettings?.siteBadge || '1000GB'} Cloud Storage • ${siteSettings?.storageQuotaGb || 1000} GB High Security Vault`}
         </div>
         {onOpenAdminLogin && (
           <button

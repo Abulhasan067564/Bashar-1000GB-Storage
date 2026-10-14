@@ -151,26 +151,33 @@ export const WebsiteSettingsModal: React.FC<WebsiteSettingsModalProps> = ({
     setError(null);
   };
 
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+
   const handleResetToDefault = () => {
-    if (window.confirm(lang === 'bn' ? 'আপনি কি নিশ্চিত যে ওয়েবসাইটের সকল সেটিংস পূর্বাবস্থায় ফিরিয়ে নিতে চান?' : 'Reset all website settings to default?')) {
-      setSiteName(DEFAULT_SITE_SETTINGS.siteName);
-      setSiteBadge(DEFAULT_SITE_SETTINGS.siteBadge);
-      setSiteLogoUrl('');
-      setTaglineBn(DEFAULT_SITE_SETTINGS.taglineBn);
-      setTaglineEn(DEFAULT_SITE_SETTINGS.taglineEn);
-      setThemeColor('cyan');
-      setYoutubeChannelUrl(DEFAULT_SITE_SETTINGS.youtubeChannelUrl);
-      setYoutubeChannelName(DEFAULT_SITE_SETTINGS.youtubeChannelName);
-      setYoutubeBannerTextBn(DEFAULT_SITE_SETTINGS.youtubeBannerTextBn);
-      setShowYoutubeBanner(true);
-      setAnnouncementNotice('');
-      setNoticeType('info');
-      setStorageQuotaGb(1000);
-      setFooterCopyright(DEFAULT_SITE_SETTINGS.footerCopyright || '');
-      setContactSupport('');
-      setAllowRegistrations(true);
-      setSuccess(lang === 'bn' ? 'ডিফল্ট মান লোড হয়েছে। সেভ বাটনে ক্লিক করুন।' : 'Default values loaded. Click Save.');
+    if (!isConfirmingReset) {
+      setIsConfirmingReset(true);
+      setError(lang === 'bn' ? '⚠️ নিশ্চিত করতে পুনরায় "রিসেট করুন" বাটনে চাপুন।' : '⚠️ Click Reset again to confirm.');
+      setTimeout(() => setIsConfirmingReset(false), 5000);
+      return;
     }
+    setIsConfirmingReset(false);
+    setSiteName(DEFAULT_SITE_SETTINGS.siteName);
+    setSiteBadge(DEFAULT_SITE_SETTINGS.siteBadge);
+    setSiteLogoUrl('');
+    setTaglineBn(DEFAULT_SITE_SETTINGS.taglineBn);
+    setTaglineEn(DEFAULT_SITE_SETTINGS.taglineEn);
+    setThemeColor('cyan');
+    setYoutubeChannelUrl(DEFAULT_SITE_SETTINGS.youtubeChannelUrl);
+    setYoutubeChannelName(DEFAULT_SITE_SETTINGS.youtubeChannelName);
+    setYoutubeBannerTextBn(DEFAULT_SITE_SETTINGS.youtubeBannerTextBn);
+    setShowYoutubeBanner(true);
+    setAnnouncementNotice('');
+    setNoticeType('info');
+    setStorageQuotaGb(1000);
+    setFooterCopyright(DEFAULT_SITE_SETTINGS.footerCopyright || '');
+    setContactSupport('');
+    setAllowRegistrations(true);
+    setSuccess(lang === 'bn' ? 'ডিফল্ট মান লোড হয়েছে। সেভ বাটনে ক্লিক করুন।' : 'Default values loaded. Click Save.');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

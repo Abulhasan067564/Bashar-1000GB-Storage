@@ -9,6 +9,7 @@ interface UploadModalProps {
   onClose: () => void;
   onFilesUploaded: (newFiles: StorageFile[]) => Promise<void> | void;
   ownerId: string;
+  ownerPhone?: string;
   currentFolderId?: string | null;
   lang: 'bn' | 'en';
 }
@@ -18,6 +19,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onClose,
   onFilesUploaded,
   ownerId,
+  ownerPhone,
   currentFolderId,
   lang
 }) => {
@@ -123,6 +125,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           encryptionHint: encryptEnabled ? encryptionHint : undefined,
           inTrash: false,
           ownerId,
+          ownerPhone: ownerPhone ? ownerPhone.trim() : undefined,
           folderId: currentFolderId || null,
           shared: { isShared: false }
         };

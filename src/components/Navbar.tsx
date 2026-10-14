@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAccount, StorageStats, SiteSettings } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3 } from 'lucide-react';
+import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3, Bot } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -9,6 +9,7 @@ interface NavbarProps {
   onOpenProfile: () => void;
   onOpenUpload: () => void;
   onOpenAnalytics?: () => void;
+  onOpenChat?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   stats: StorageStats;
@@ -27,6 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenProfile,
   onOpenUpload,
   onOpenAnalytics,
+  onOpenChat,
   searchQuery,
   onSearchChange,
   stats,
@@ -132,6 +134,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <BarChart3 className="w-4 h-4 text-cyan-400" />
               <span className="hidden md:inline">{lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics'}</span>
+            </button>
+          )}
+
+          {/* Gemini AI Chatbot Button */}
+          {onOpenChat && (
+            <button
+              onClick={onOpenChat}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 hover:text-white border border-cyan-400/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950"
+              title={lang === 'bn' ? 'Gemini এআই অ্যাসিস্ট্যান্ট (চ্যাট করুন)' : 'Gemini AI Assistant'}
+            >
+              <Bot className="w-4 h-4 text-cyan-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'AI চ্যাট' : 'AI Chat'}</span>
             </button>
           )}
 

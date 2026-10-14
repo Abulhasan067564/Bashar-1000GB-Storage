@@ -168,16 +168,16 @@ export const FileCard: React.FC<FileCardProps> = ({
         <div className="flex items-center gap-1.5">
           {isFolder && (
             <span
-              className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40"
+              className="text-[10px] font-bold text-amber-400 tracking-wide uppercase font-mono"
               title={lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
             >
-              {lang === 'bn' ? 'ফোল্ডার' : 'FOLDER'}
+              {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
             </span>
           )}
 
           {file.isEncrypted && (
             <span
-              className="p-1 rounded-md bg-amber-500/20 text-amber-400 text-xs border border-amber-500/30"
+              className="text-amber-400"
               title={lang === 'bn' ? 'এনক্রিপ্টেড ভল্ট ফাইল' : 'Encrypted Vault'}
             >
               <Lock className="w-3.5 h-3.5" />
@@ -186,7 +186,7 @@ export const FileCard: React.FC<FileCardProps> = ({
 
           {file.shared?.isShared && (
             <span
-              className="p-1 rounded-md bg-blue-500/20 text-blue-400 text-xs border border-blue-500/30"
+              className="text-cyan-400"
               title={lang === 'bn' ? 'শেয়ার করা লিঙ্ক সক্রিয়' : 'Public Share Active'}
             >
               <Share2 className="w-3.5 h-3.5" />
@@ -213,7 +213,7 @@ export const FileCard: React.FC<FileCardProps> = ({
             <Folder className="w-8 h-8 text-amber-400 fill-amber-400/20" />
           </div>
         ) : file.category === 'image' && file.dataUrl ? (
-          <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-700/60 bg-black/40 flex items-center justify-center shadow-inner">
+          <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-700/60 bg-black/40 flex items-center justify-center shadow-inner group-hover:border-cyan-500/50 transition">
             <img src={file.dataUrl} alt={file.name} className="w-full h-full object-cover" />
           </div>
         ) : (
@@ -222,18 +222,20 @@ export const FileCard: React.FC<FileCardProps> = ({
           </div>
         )}
 
-        <h4 className="mt-3 text-xs font-bold text-slate-200 text-center truncate max-w-[170px]" title={file.name}>
+        <h4 className="mt-3 text-xs font-bold text-slate-100 text-center truncate max-w-[170px]" title={file.name}>
           {file.name}
         </h4>
-        <span className="text-[11px] text-slate-400 mt-0.5 font-medium">
-          {formatBytes(file.size)}
-        </span>
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 font-medium">
+          <span>{formatBytes(file.size)}</span>
+          <span aria-hidden="true" className="text-slate-600">·</span>
+          <span>{new Date(file.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+        </div>
       </div>
 
-      {/* Footer: Date & Quick Actions */}
-      <div className="pt-3 border-t border-slate-800/70 flex items-center justify-between text-xs text-slate-400">
-        <span className="text-[10px] text-slate-500">
-          {new Date(file.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+      {/* Footer: Quick Actions */}
+      <div className="pt-2.5 border-t border-slate-800/70 flex items-center justify-between text-xs text-slate-400">
+        <span className="text-[10px] text-slate-500 font-mono uppercase">
+          {isFolder ? 'Folder' : file.category}
         </span>
 
         {/* Action icons */}

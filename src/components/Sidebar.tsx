@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActiveTab, StorageStats } from '../types/storage';
+import { ActiveTab, StorageStats, SiteSettings } from '../types/storage';
 import { 
   Folder, 
   Star, 
@@ -14,6 +14,7 @@ interface SidebarProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   stats: StorageStats;
+  siteSettings?: SiteSettings;
   trashCount: number;
   starredCount: number;
   sharedCount: number;
@@ -26,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   stats,
+  siteSettings,
   trashCount,
   starredCount,
   sharedCount,
@@ -39,8 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return (mb / 1024).toFixed(2) + ' GB';
   };
 
-  // 1000 GB in bytes
-  const totalGb = 1000;
+  const totalGb = siteSettings?.storageQuotaGb || 1000;
   const usedGb = stats.usedBytes / (1024 * 1024 * 1024);
   const percentage = Math.max(0.1, Math.min(100, (usedGb / totalGb) * 100));
 
@@ -123,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             </div>
             <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/40">
-              1000 GB
+              {totalGb} GB
             </span>
           </div>
 
@@ -136,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <div className="flex justify-between items-center text-[11px] text-slate-400">
             <span>{formatStorage(stats.usedBytes)} {lang === 'bn' ? 'ব্যবহৃত' : 'used'}</span>
-            <span className="text-slate-500">{(1000 - usedGb).toFixed(1)} GB {lang === 'bn' ? 'বাকি' : 'free'}</span>
+            <span className="text-slate-500">{Math.max(0, totalGb - usedGb).toFixed(1)} GB {lang === 'bn' ? 'বাকি' : 'free'}</span>
           </div>
 
           {onOpenAnalytics && (

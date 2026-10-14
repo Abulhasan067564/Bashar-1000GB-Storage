@@ -171,8 +171,8 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                 {file.name}
               </span>
               {isFolder && (
-                <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold border border-amber-500/30">
-                  {lang === 'bn' ? 'ফোল্ডার' : 'FOLDER'}
+                <span className="text-amber-400 text-[10px] font-bold font-mono uppercase">
+                  {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
                 </span>
               )}
               {file.isEncrypted && (

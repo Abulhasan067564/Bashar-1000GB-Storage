@@ -59,6 +59,7 @@ import { CreateFileModal } from './components/Modals/CreateFileModal';
 import { CreateFolderModal } from './components/Modals/CreateFolderModal';
 import { MoveCopyModal } from './components/Modals/MoveCopyModal';
 import { AnalyticsModal } from './components/Modals/AnalyticsModal';
+import { GeminiChatbot } from './components/GeminiChatbot';
 import { 
   Cloud, 
   Upload, 
@@ -209,6 +210,7 @@ export default function App() {
   const [previewFile, setPreviewFile] = useState<StorageFile | null>(null);
   const [shareFile, setShareFile] = useState<StorageFile | null>(null);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -706,12 +708,13 @@ export default function App() {
       isEncrypted: false,
       inTrash: false,
       ownerId: currentUser.id,
+      ownerPhone: currentUser.emailOrPhone,
       isFolder: true,
       folderId: currentFolderId || null
     };
 
     saveStoredFile(newFolder).catch(err => console.error(err));
-    saveFileToFirestore(newFolder).catch(() => {});
+    saveFileToFirestore(newFolder, currentUser.emailOrPhone).catch(() => {});
     setFiles(prev => [newFolder, ...prev]);
     showToast(lang === 'bn' ? `"${newFolder.name}" ফোল্ডার তৈরি হয়েছে!` : `Folder "${newFolder.name}" created!`);
     return newFolder;
@@ -721,10 +724,11 @@ export default function App() {
   const handleCreateFile = async (newFile: StorageFile) => {
     const enriched = {
       ...newFile,
-      ownerId: newFile.ownerId || (currentUser ? currentUser.id : 'default')
+      ownerId: newFile.ownerId || (currentUser ? currentUser.id : 'default'),
+      ownerPhone: newFile.ownerPhone || (currentUser ? currentUser.emailOrPhone : '')
     };
     await saveStoredFile(enriched);
-    saveFileToFirestore(enriched).catch(() => {});
+    saveFileToFirestore(enriched, currentUser?.emailOrPhone).catch(() => {});
     setFiles(prev => [enriched, ...prev]);
     showToast(lang === 'bn' ? `"${enriched.name}" ফাইল তৈরি হয়েছে!` : `File "${enriched.name}" created!`);
   };
@@ -1141,6 +1145,7 @@ export default function App() {
               isEncrypted: false,
               inTrash: false,
               ownerId: currentUser.id,
+              ownerPhone: currentUser.emailOrPhone,
               folderId: currentFolderId || null,
               shared: { isShared: false }
             });
@@ -1160,6 +1165,7 @@ export default function App() {
               isEncrypted: false,
               inTrash: false,
               ownerId: currentUser.id,
+              ownerPhone: currentUser.emailOrPhone,
               folderId: currentFolderId || null,
               shared: { isShared: false }
             });
@@ -1332,6 +1338,7 @@ export default function App() {
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+        onOpenChat={() => setIsChatOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -1352,6 +1359,7 @@ export default function App() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           stats={stats}
+          siteSettings={siteSettings}
           trashCount={trashCount}
           starredCount={starredCount}
           sharedCount={sharedCount}
@@ -1412,6 +1420,7 @@ export default function App() {
           {/* Action Bar (Batch select, batch download all, batch delete all, filters, folder nav, copy/move) */}
           <ActionBar
             activeTab={activeTab}
+            siteSettings={siteSettings}
             totalFilteredFiles={filteredFiles.length}
             selectedCount={selectedFileIds.size}
             allSelected={selectedFileIds.size === filteredFiles.length && filteredFiles.length > 0}
@@ -1478,23 +1487,23 @@ export default function App() {
                     ? (lang === 'bn' ? 'রিসাইকেল বিন সম্পূর্ণ খালি' : 'Recycle Bin is Empty')
                     : currentFolder
                       ? (lang === 'bn' ? `"${currentFolder.name}" ফোল্ডারটিতে কোনো ফাইল নেই` : `Folder "${currentFolder.name}" is empty`)
-                      : (lang === 'bn' ? 'ড্রাইভটিতে এখনো কোনো ফাইল নেই' : 'Your 1000 GB Drive is Empty')}
+                      : (lang === 'bn' ? `${siteSettings?.siteName || 'বাশার'} ক্লাউড ড্রাইভে কোনো ফাইল নেই` : `Your ${siteSettings?.storageQuotaGb || 1000} GB Drive is Empty`)}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-sm mt-1 mb-5">
                   {activeTab === 'trash'
-                    ? (lang === 'bn' ? 'এখানে কোনো ফাইল নেই। বাশার ড্রাইভ থেকে কোনো ফাইল ডিলিট করলে তা নিরাপদে এখানে জমা থাকবে।' : 'No deleted files. Any deleted files will be safely stored here.')
+                    ? (lang === 'bn' ? `এখানে কোনো ফাইল নেই। ${siteSettings?.siteName || 'বাশার'} ড্রাইভ থেকে কোনো ফাইল ডিলিট করলে তা নিরাপদে এখানে জমা থাকবে।` : 'No deleted files. Any deleted files will be safely stored here.')
                     : searchQuery
                       ? (lang === 'bn' ? 'আপনার সার্চ কোয়েরির সাথে কোনো ফাইল মেলেনি।' : 'No files match your search query.')
                       : currentFolder
                         ? (lang === 'bn' ? 'এই ফোল্ডারের ভিতরে ফাইল তৈরি করুন, আপলোড করুন বা অন্য ফাইল মুভ করে নিয়ে আসুন।' : 'Create, upload, or move files into this folder.')
-                        : (lang === 'bn' ? 'আপনার ১০০০ জিবি স্পেসে নতুন ফাইল তৈরি করুন বা ফাইল আপলোড শুরু করুন।' : 'Start creating or uploading your files into your 1000 GB space.')}
+                        : (lang === 'bn' ? `আপনার ${siteSettings?.storageQuotaGb || 1000} জিবি স্পেসে নতুন ফাইল তৈরি করুন বা ফাইল আপলোড শুরু করুন।` : `Start creating or uploading your files into your ${siteSettings?.storageQuotaGb || 1000} GB space.`)}
                 </p>
                 {activeTab === 'trash' ? (
                   <button
                     onClick={() => setActiveTab('all')}
                     className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold text-xs rounded-xl border border-cyan-500/30 transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>{lang === 'bn' ? 'বাশার ড্রাইভে ফিরে যান' : 'Back to Drive'}</span>
+                    <span>{lang === 'bn' ? `${siteSettings?.siteName || 'বাশার'} ড্রাইভে ফিরে যান` : `Back to ${siteSettings?.siteName || 'Bashar'} Drive`}</span>
                   </button>
                 ) : (
                   <div className="flex items-center gap-3 flex-wrap justify-center">
@@ -1676,6 +1685,7 @@ export default function App() {
         onClose={() => setIsUploadOpen(false)}
         onFilesUploaded={handleFilesUploaded}
         ownerId={currentUser.id}
+        ownerPhone={currentUser.emailOrPhone}
         currentFolderId={currentFolderId}
         lang={lang}
       />
@@ -1685,6 +1695,18 @@ export default function App() {
         onClose={() => setIsAnalyticsOpen(false)}
         files={files}
         stats={stats}
+        lang={lang}
+      />
+
+      {/* Gemini AI Multi-turn Chatbot */}
+      <GeminiChatbot
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        onToggleOpen={() => setIsChatOpen(prev => !prev)}
+        stats={stats}
+        files={files}
+        currentUser={currentUser}
+        currentFolder={currentFolder}
         lang={lang}
       />
     </div>

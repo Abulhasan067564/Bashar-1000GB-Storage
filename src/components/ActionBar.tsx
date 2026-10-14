@@ -1,5 +1,5 @@
 import React from 'react';
-import { ViewMode, FileCategory, ActiveTab, StorageFile, ClipboardState } from '../types/storage';
+import { ViewMode, FileCategory, ActiveTab, StorageFile, ClipboardState, SiteSettings } from '../types/storage';
 import { 
   CheckSquare, 
   Square, 
@@ -26,6 +26,7 @@ import {
 
 interface ActionBarProps {
   activeTab: ActiveTab;
+  siteSettings?: SiteSettings;
   totalFilteredFiles: number;
   selectedCount: number;
   allSelected: boolean;
@@ -57,6 +58,7 @@ interface ActionBarProps {
 
 export const ActionBar: React.FC<ActionBarProps> = ({
   activeTab,
+  siteSettings,
   totalFilteredFiles,
   selectedCount,
   allSelected,
@@ -86,6 +88,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   lang
 }) => {
   const isTrashTab = activeTab === 'trash';
+  const driveTitle = siteSettings?.siteName ? `${siteSettings.siteName} Drive` : 'Bashar Drive';
+  const driveTitleBn = siteSettings?.siteName ? `${siteSettings.siteName} ড্রাইভ` : 'বাশার ড্রাইভ';
 
   const categories: { key: FileCategory | 'all'; labelBn: string; labelEn: string }[] = [
     { key: 'all', labelBn: 'সকল', labelEn: 'All' },
@@ -119,7 +123,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <div className="text-[11px] opacity-80">
                 {currentFolder
                   ? (lang === 'bn' ? `বর্তমান অবস্থান: "${currentFolder.name}" ফোল্ডারের ভেতরে` : `Target: Inside "${currentFolder.name}"`)
-                  : (lang === 'bn' ? 'বর্তমান অবস্থান: বাশার ড্রাইভ (Bashar Drive)' : 'Target: Bashar Drive')}
+                  : (lang === 'bn' ? `বর্তমান অবস্থান: ${driveTitleBn}` : `Target: ${driveTitle}`)}
               </div>
             </div>
           </div>
@@ -169,7 +173,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                 className="text-slate-400 hover:text-white flex items-center gap-1"
               >
                 <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{lang === 'bn' ? 'বাশার ড্রাইভ' : 'Bashar Drive'}</span>
+                <span>{lang === 'bn' ? driveTitleBn : driveTitle}</span>
               </button>
               <ChevronRight className="w-3 h-3 text-slate-600" />
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
@@ -178,9 +182,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-slate-400 font-semibold">
+            <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
               <HardDrive className="w-4 h-4 text-cyan-400" />
-              <span>{lang === 'bn' ? 'বাশার ড্রাইভ (Bashar Drive)' : 'Bashar Drive'}</span>
+              <span>{lang === 'bn' ? driveTitleBn : driveTitle}</span>
             </div>
           )}
         </div>

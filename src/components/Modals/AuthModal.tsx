@@ -74,10 +74,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
+    const cleanIdent = emailOrPhone.trim();
+    const normalizedIdent = cleanIdent.replace(/[\s\-\(\)\+]/g, '').toLowerCase();
+    const newUserId = 'u_' + (normalizedIdent || Date.now());
+
     const newUser: UserAccount = {
-      id: 'user-' + Date.now(),
+      id: newUserId,
       name: name.trim() || (lang === 'bn' ? 'বাশার ইউজার' : 'Bashar User'),
-      emailOrPhone: emailOrPhone.trim(),
+      emailOrPhone: cleanIdent,
       secretName: secretName.trim().toLowerCase(),
       birthDate: birthDate.trim() || undefined,
       passwordHash: password,
