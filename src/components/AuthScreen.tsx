@@ -9,7 +9,8 @@ import {
 import { 
   removeDeletedUserId,
   saveUserToFirestore,
-  findUserInFirestore 
+  findUserInFirestore,
+  loadUserFilesFromFirestore
 } from '../services/firebase';
 import { 
   Cloud, 
@@ -27,7 +28,8 @@ import {
   Calendar,
   Camera,
   Trash2,
-  ShieldCheck
+  ShieldCheck,
+  Bot
 } from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
 
@@ -39,6 +41,7 @@ interface AuthScreenProps {
   lang: 'bn' | 'en';
   onToggleLang: () => void;
   onOpenAdminLogin?: () => void;
+  onOpenChat?: () => void;
 }
 
 const PRESET_LOGOS = [
@@ -55,7 +58,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   siteSettings,
   lang,
   onToggleLang,
-  onOpenAdminLogin
+  onOpenAdminLogin,
+  onOpenChat
 }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [emailOrPhone, setEmailOrPhone] = useState('');
@@ -74,6 +78,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pre-warm / prefetch cloud files cache while user is typing phone/email or password so login has 0ms wait
+  React.useEffect(() => {
+    const clean = emailOrPhone.trim();
+    if (clean.length >= 6) {
+      const timer = setTimeout(() => {
+        const localMatch = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, clean));
+        const uid = localMatch ? localMatch.id : '';
+        loadUserFilesFromFirestore(uid, clean).catch(() => {});
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [emailOrPhone, usersList]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -327,6 +344,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenChat && (
+            <button
+              onClick={onOpenChat}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 hover:text-white border border-cyan-400/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950"
+              title={lang === 'bn' ? 'বাশার এআই অ্যাসিস্ট্যান্ট (যেকোনো প্রশ্ন করুন)' : 'Bashar AI Assistant (Ask Anything)'}
+            >
+              <Bot className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{lang === 'bn' ? 'এআই চ্যাট' : 'AI Chat'}</span>
+            </button>
+          )}
+
           {onOpenAdminLogin && (
             <button
               onClick={onOpenAdminLogin}

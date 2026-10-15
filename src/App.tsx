@@ -14,6 +14,8 @@ import {
 import { 
   getAllStoredFiles, 
   getStoredFilesBackup,
+  getUserFilesSync,
+  saveUserFilesCache,
   saveStoredFile, 
   saveMultipleStoredFiles, 
   deleteStoredFile, 
@@ -179,12 +181,20 @@ export default function App() {
   
   const [files, setFiles] = useState<StorageFile[]>(() => {
     try {
-      const backup = getStoredFilesBackup();
       const activeId = localStorage.getItem(STORAGE_SESSION_KEY);
-      if (activeId && backup.length > 0) {
-        return backup.filter(f => !f.ownerId || f.ownerId === activeId || f.ownerId === 'default');
+      if (activeId) {
+        let userEmailOrPhone: string | undefined;
+        try {
+          const savedUsers = localStorage.getItem(STORAGE_USERS_KEY);
+          if (savedUsers) {
+            const list: UserAccount[] = JSON.parse(savedUsers);
+            const matched = list.find(u => u.id === activeId);
+            if (matched) userEmailOrPhone = matched.emailOrPhone;
+          }
+        } catch {}
+        return getUserFilesSync(activeId, userEmailOrPhone);
       }
-      return backup;
+      return [];
     } catch {
       return [];
     }
@@ -404,6 +414,10 @@ export default function App() {
         (activePhoneOrEmail && f.ownerPhone === activePhoneOrEmail)
       );
       const fileMap = new Map<string, StorageFile>();
+      // Preload current instant sync cache
+      const currentSync = getUserFilesSync(userId, activePhoneOrEmail);
+      currentSync.forEach(f => fileMap.set(f.id, f));
+
       userLocals.forEach(f => {
         if (!f.ownerId || f.ownerId === 'default') {
           f.ownerId = userId;
@@ -411,7 +425,8 @@ export default function App() {
         if (!f.ownerPhone && activePhoneOrEmail) {
           f.ownerPhone = activePhoneOrEmail;
         }
-        fileMap.set(f.id, f);
+        const existing = fileMap.get(f.id);
+        fileMap.set(f.id, { ...existing, ...f, dataUrl: f.dataUrl || existing?.dataUrl });
       });
 
       // 2. Fetch cloud files from Firestore (Dual-Key: matches by userId AND phone number)
@@ -425,30 +440,13 @@ export default function App() {
         const local = fileMap.get(cf.id);
         if (!local) {
           // File uploaded from another browser/computer/phone!
-          let finalDataUrl = cf.dataUrl;
-          if (!finalDataUrl && (cf as any).hasChunks && (cf as any).totalChunks) {
-            try {
-              const assembled = await loadFileChunksFromFirestore(cf.id, (cf as any).totalChunks);
-              if (assembled) finalDataUrl = assembled;
-            } catch (chunkErr) {
-              console.warn('Chunk assembly notice:', chunkErr);
-            }
-          }
-          fileMap.set(cf.id, { ...cf, dataUrl: finalDataUrl });
+          fileMap.set(cf.id, cf);
           hasNewCloudFiles = true;
         } else {
           // If local has no dataUrl or cloud has newer dataUrl
           if (!local.dataUrl && cf.dataUrl) {
             fileMap.set(cf.id, { ...local, dataUrl: cf.dataUrl });
             hasNewCloudFiles = true;
-          } else if (!local.dataUrl && (cf as any).hasChunks && (cf as any).totalChunks) {
-            try {
-              const assembled = await loadFileChunksFromFirestore(cf.id, (cf as any).totalChunks);
-              if (assembled) {
-                fileMap.set(cf.id, { ...local, dataUrl: assembled });
-                hasNewCloudFiles = true;
-              }
-            } catch {}
           }
           if (new Date(cf.updatedAt).getTime() > new Date(local.updatedAt).getTime()) {
             fileMap.set(cf.id, { ...cf, dataUrl: cf.dataUrl || local.dataUrl });
@@ -468,16 +466,35 @@ export default function App() {
       const mergedFiles = Array.from(fileMap.values());
       // Sort newest first
       mergedFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      
+      // Update UI immediately with zero loading lag
       setFiles(mergedFiles);
+      saveUserFilesCache(userId, mergedFiles, activePhoneOrEmail);
 
       // Cache newly retrieved cloud files into this browser's IndexedDB
       if (hasNewCloudFiles) {
-        await saveMultipleStoredFiles(mergedFiles);
+        saveMultipleStoredFiles(mergedFiles).catch(() => {});
       }
 
       // Back up local files to cloud
       if (filesToPushToCloud.length > 0) {
         saveMultipleFilesToFirestore(filesToPushToCloud, activePhoneOrEmail).catch(() => {});
+      }
+
+      // Asynchronously assemble chunks for any cloud files in background without blocking UI
+      const filesNeedingChunks = mergedFiles.filter(f => !f.dataUrl && (f as any).hasChunks && (f as any).totalChunks);
+      if (filesNeedingChunks.length > 0) {
+        (async () => {
+          for (const chunkedFile of filesNeedingChunks) {
+            try {
+              const assembled = await loadFileChunksFromFirestore(chunkedFile.id, (chunkedFile as any).totalChunks);
+              if (assembled) {
+                setFiles(prev => prev.map(f => f.id === chunkedFile.id ? { ...f, dataUrl: assembled } : f));
+                saveStoredFile({ ...chunkedFile, dataUrl: assembled }).catch(() => {});
+              }
+            } catch {}
+          }
+        })();
       }
 
       if (isManual) {
@@ -495,6 +512,12 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (user: UserAccount) => {
+    // 1. INSTANTLY populate files synchronously BEFORE or TOGETHER with setCurrentUser
+    const immediateFiles = getUserFilesSync(user.id, user.emailOrPhone);
+    if (immediateFiles.length > 0) {
+      setFiles(immediateFiles);
+    }
+
     setCurrentUser(user);
     localStorage.setItem(STORAGE_SESSION_KEY, user.id);
     saveUserToFirestore(user).catch(() => {});
@@ -503,7 +526,32 @@ export default function App() {
         ? `স্বাগতম, ${user.name}! প্রোফাইলে গিয়ে লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড সেট করতে পারেন।` 
         : `Welcome, ${user.name}! Customize your logo, name, birthday & password in Profile.`
     );
-    await syncUserFiles(user.id, false, user.emailOrPhone);
+
+    // Fast IndexedDB hydration (<10ms)
+    getAllStoredFiles().then(stored => {
+      const userLocals = stored.filter(f => 
+        !f.ownerId || 
+        f.ownerId === user.id || 
+        f.ownerId === 'default' || 
+        (user.emailOrPhone && f.ownerPhone === user.emailOrPhone)
+      );
+      if (userLocals.length > 0) {
+        setFiles(prev => {
+          const map = new Map<string, StorageFile>();
+          prev.forEach(f => map.set(f.id, f));
+          userLocals.forEach(f => {
+            const ex = map.get(f.id);
+            map.set(f.id, { ...ex, ...f, dataUrl: f.dataUrl || ex?.dataUrl });
+          });
+          const merged = Array.from(map.values()).sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+          saveUserFilesCache(user.id, merged, user.emailOrPhone);
+          return merged;
+        });
+      }
+    }).catch(() => {});
+
+    // Silent background sync with Firestore (non-blocking)
+    syncUserFiles(user.id, false, user.emailOrPhone);
   };
 
   const handleLogout = () => {
@@ -570,6 +618,12 @@ export default function App() {
         return;
       }
       try {
+        // Instant synchronous fallback if files state hasn't populated yet
+        const immediate = getUserFilesSync(currentUser.id, currentUser.emailOrPhone);
+        if (immediate.length > 0) {
+          setFiles(prev => (prev.length === 0 ? immediate : prev));
+        }
+
         const stored = await getAllStoredFiles();
         // Fast local render if available
         const userFiles = stored.filter(f => 
@@ -588,7 +642,17 @@ export default function App() {
         });
         if (userFiles.length > 0) {
           userFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-          setFiles(userFiles);
+          setFiles(prev => {
+            const map = new Map<string, StorageFile>();
+            prev.forEach(f => map.set(f.id, f));
+            userFiles.forEach(f => {
+              const existing = map.get(f.id);
+              map.set(f.id, { ...existing, ...f, dataUrl: f.dataUrl || existing?.dataUrl });
+            });
+            const merged = Array.from(map.values()).sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+            saveUserFilesCache(currentUser.id, merged, currentUser.emailOrPhone);
+            return merged;
+          });
         }
       } catch (err) {
         console.error('Local storage load notice:', err);
@@ -1282,6 +1346,19 @@ export default function App() {
           lang={lang}
           onToggleLang={() => setLang(prev => prev === 'bn' ? 'en' : 'bn')}
           onOpenAdminLogin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
+          onOpenChat={() => setIsChatOpen(true)}
+        />
+
+        {/* Gemini AI Multi-turn Chatbot available on landing screen */}
+        <GeminiChatbot
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          onToggleOpen={() => setIsChatOpen(prev => !prev)}
+          stats={stats}
+          files={files}
+          currentUser={currentUser}
+          currentFolder={currentFolder}
+          lang={lang}
         />
       </>
     );

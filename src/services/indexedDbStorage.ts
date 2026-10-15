@@ -45,6 +45,91 @@ export function saveStoredFilesBackup(files: StorageFile[]): void {
   }
 }
 
+// Synchronous and immediate user-specific file retrieval for instant zero-wait login
+export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): StorageFile[] {
+  const fileMap = new Map<string, StorageFile>();
+
+  // 1. Check user-specific localStorage cache if userId provided
+  if (userId) {
+    try {
+      const userRaw = localStorage.getItem(`bashar_user_files_${userId}`);
+      if (userRaw) {
+        const parsed = JSON.parse(userRaw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(f => fileMap.set(f.id, f));
+        }
+      }
+      const cloudRaw = localStorage.getItem(`bashar_cloud_files_${userId}`);
+      if (cloudRaw) {
+        const parsedCloud = JSON.parse(cloudRaw);
+        if (Array.isArray(parsedCloud)) {
+          parsedCloud.forEach(f => {
+            const existing = fileMap.get(f.id);
+            fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+          });
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Check user phone/email cache
+  if (userPhoneOrEmail) {
+    const cleanPhone = userPhoneOrEmail.trim();
+    try {
+      const phoneRaw = localStorage.getItem(`bashar_user_files_${cleanPhone}`);
+      if (phoneRaw) {
+        const parsed = JSON.parse(phoneRaw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(f => {
+            const existing = fileMap.get(f.id);
+            fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+          });
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Check general local backup
+  const backup = getStoredFilesBackup();
+  const cleanPhone = userPhoneOrEmail?.trim();
+  backup.forEach(f => {
+    const matchesUser = 
+      !f.ownerId || 
+      f.ownerId === 'default' || 
+      (userId && f.ownerId === userId) ||
+      (cleanPhone && f.ownerPhone === cleanPhone);
+
+    if (matchesUser) {
+      const existing = fileMap.get(f.id);
+      fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+    }
+  });
+
+  const list = Array.from(fileMap.values());
+  list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+  return list;
+}
+
+// Cache user files for instant zero-wait retrieval on subsequent logins
+export function saveUserFilesCache(userId: string, files: StorageFile[], userPhoneOrEmail?: string): void {
+  try {
+    const lightweightFiles = files.map(f => {
+      if (f.dataUrl && f.dataUrl.length > 8192) {
+        const { dataUrl, ...rest } = f;
+        return rest;
+      }
+      return f;
+    });
+    const serialized = JSON.stringify(lightweightFiles);
+    if (userId) {
+      localStorage.setItem(`bashar_user_files_${userId}`, serialized);
+    }
+    if (userPhoneOrEmail && userPhoneOrEmail.trim()) {
+      localStorage.setItem(`bashar_user_files_${userPhoneOrEmail.trim()}`, serialized);
+    }
+  } catch {}
+}
+
 export function openDB(): Promise<IDBDatabase> {
   if (cachedDB) {
     return Promise.resolve(cachedDB);
@@ -140,6 +225,12 @@ export async function saveStoredFile(file: StorageFile): Promise<void> {
   }
   saveStoredFilesBackup(backup);
 
+  // Also update user-specific instant cache
+  if (file.ownerId && file.ownerId !== 'default') {
+    const userFiles = backup.filter(f => f.ownerId === file.ownerId || (file.ownerPhone && f.ownerPhone === file.ownerPhone));
+    saveUserFilesCache(file.ownerId, userFiles, file.ownerPhone);
+  }
+
   // 2. Persist full record (including large dataUrl binary) to IndexedDB
   try {
     const db = await openDB();
@@ -168,6 +259,16 @@ export async function saveMultipleStoredFiles(files: StorageFile[]): Promise<voi
   const updatedList = Array.from(map.values());
   saveStoredFilesBackup(updatedList);
 
+  // Update per-user instant cache for any affected owners
+  const affectedOwners = new Set<string>();
+  files.forEach(f => {
+    if (f.ownerId && f.ownerId !== 'default') affectedOwners.add(f.ownerId);
+  });
+  affectedOwners.forEach(ownerId => {
+    const userFiles = updatedList.filter(f => f.ownerId === ownerId);
+    saveUserFilesCache(ownerId, userFiles);
+  });
+
   // 2. Persist to IndexedDB
   try {
     const db = await openDB();
@@ -189,8 +290,14 @@ export async function saveMultipleStoredFiles(files: StorageFile[]): Promise<voi
 export async function deleteStoredFile(id: string): Promise<void> {
   // 1. Delete from localStorage backup
   const backup = getStoredFilesBackup();
+  const deletedFile = backup.find(f => f.id === id);
   const filtered = backup.filter(f => f.id !== id);
   saveStoredFilesBackup(filtered);
+
+  if (deletedFile?.ownerId && deletedFile.ownerId !== 'default') {
+    const userFiles = filtered.filter(f => f.ownerId === deletedFile.ownerId);
+    saveUserFilesCache(deletedFile.ownerId, userFiles, deletedFile.ownerPhone);
+  }
 
   // 2. Delete from IndexedDB
   try {
@@ -214,8 +321,18 @@ export async function deleteMultipleStoredFiles(ids: string[]): Promise<void> {
 
   // 1. Delete from localStorage backup
   const backup = getStoredFilesBackup();
+  const deletedFiles = backup.filter(f => idSet.has(f.id));
   const filtered = backup.filter(f => !idSet.has(f.id));
   saveStoredFilesBackup(filtered);
+
+  const affectedOwners = new Set<string>();
+  deletedFiles.forEach(f => {
+    if (f.ownerId && f.ownerId !== 'default') affectedOwners.add(f.ownerId);
+  });
+  affectedOwners.forEach(ownerId => {
+    const userFiles = filtered.filter(f => f.ownerId === ownerId);
+    saveUserFilesCache(ownerId, userFiles);
+  });
 
   // 2. Delete from IndexedDB
   try {

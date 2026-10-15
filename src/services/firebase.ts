@@ -488,16 +488,11 @@ export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmai
   const fileMap = new Map<string, StorageFile>();
 
   try {
+    const queries = [];
+
     // 1. Query by ownerId
     if (userId) {
-      const qById = query(collection(db, path), where('ownerId', '==', userId));
-      const snapById = await getDocs(qById);
-      snapById.forEach((d) => {
-        const file = d.data() as StorageFile;
-        if (file && file.id) {
-          fileMap.set(file.id, file);
-        }
-      });
+      queries.push(query(collection(db, path), where('ownerId', '==', userId)));
     }
 
     // 2. Query by ownerPhone / ownerEmailOrPhone (Guarantees cross-device findability by number)
@@ -505,31 +500,35 @@ export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmai
       const clean = userPhoneOrEmail.trim();
       const norm = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
 
-      const queries = [
-        query(collection(db, path), where('ownerPhone', '==', clean)),
-        query(collection(db, path), where('ownerEmailOrPhone', '==', clean))
-      ];
+      queries.push(query(collection(db, path), where('ownerPhone', '==', clean)));
+      queries.push(query(collection(db, path), where('ownerEmailOrPhone', '==', clean)));
 
-      if (norm !== clean) {
+      if (norm && norm !== clean) {
         queries.push(query(collection(db, path), where('ownerPhone', '==', norm)));
         queries.push(query(collection(db, path), where('ownerPhone', '==', '0' + norm)));
         queries.push(query(collection(db, path), where('ownerPhone', '==', '+88' + norm)));
       }
-
-      const results = await Promise.allSettled(queries.map(q => getDocs(q)));
-      results.forEach(res => {
-        if (res.status === 'fulfilled') {
-          res.value.forEach(d => {
-            const file = d.data() as StorageFile;
-            if (file && file.id) {
-              fileMap.set(file.id, file);
-            }
-          });
-        }
-      });
     }
 
+    // Execute ALL Firestore queries concurrently in parallel for maximum speed
+    const results = await Promise.allSettled(queries.map(q => getDocs(q)));
+    results.forEach(res => {
+      if (res.status === 'fulfilled') {
+        res.value.forEach(d => {
+          const file = d.data() as StorageFile;
+          if (file && file.id) {
+            fileMap.set(file.id, file);
+          }
+        });
+      }
+    });
+
     const list = Array.from(fileMap.values());
+    if (userId && list.length > 0) {
+      try {
+        localStorage.setItem(`bashar_cloud_files_${userId}`, JSON.stringify(list));
+      } catch {}
+    }
     return list;
   } catch (error) {
     if (isQuotaError(error)) {
