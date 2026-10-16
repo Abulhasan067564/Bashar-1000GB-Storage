@@ -25,6 +25,7 @@ interface ProfileModalProps {
   currentUser: UserAccount;
   onUpdateUser: (updatedUser: UserAccount) => void;
   onDeleteAccount: () => void | Promise<void>;
+  onOpenSubscription?: () => void;
   lang: 'bn' | 'en';
 }
 
@@ -42,6 +43,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   currentUser,
   onUpdateUser,
   onDeleteAccount,
+  onOpenSubscription,
   lang
 }) => {
   const [name, setName] = useState(currentUser.name || '');
@@ -376,15 +378,29 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   )}
                 </span>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
-                trial.isLifetime 
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
-                  : trial.isExpired
-                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-              }`}>
-                {trial.isLifetime ? 'VIP' : (lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk')}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                  trial.isLifetime 
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                    : trial.isExpired
+                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                }`}>
+                  {trial.isLifetime ? 'VIP' : (lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk')}
+                </span>
+                {!trial.isLifetime && onOpenSubscription && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenSubscription();
+                    }}
+                    className="px-2.5 py-0.5 rounded-md bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-[10px] shadow transition cursor-pointer"
+                  >
+                    {lang === 'bn' ? 'আনলক করুন' : 'Unlock'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Secret Name line (সিক্রেট নাম দেখা যাবে) */}

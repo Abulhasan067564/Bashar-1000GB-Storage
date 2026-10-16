@@ -1948,6 +1948,7 @@ export default function App() {
             showToast(lang === 'bn' ? 'প্রোফাইল সেটিংস সংরক্ষিত হয়েছে।' : 'Profile settings updated.');
           }}
           onDeleteAccount={handleDeleteAccount}
+          onOpenSubscription={() => setIsSubscriptionOpen(true)}
           lang={lang}
         />
       )}

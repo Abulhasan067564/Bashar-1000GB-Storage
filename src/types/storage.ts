@@ -114,8 +114,8 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   contactSupport: '',
   allowRegistrations: true,
   themeColor: 'cyan',
-  bkashNumber: '01890342371', // Personal bKash Send Money
-  nagadNumber: '01890342371', // Personal Nagad Send Money
+  bkashNumber: '01734211584', // Personal bKash Send Money
+  nagadNumber: '01734211584', // Personal Nagad Send Money
   subscriptionFee: 100
 };
 

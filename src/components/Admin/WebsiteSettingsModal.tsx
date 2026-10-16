@@ -209,6 +209,9 @@ export const WebsiteSettingsModal: React.FC<WebsiteSettingsModalProps> = ({
       footerCopyright: footerCopyright.trim() || DEFAULT_SITE_SETTINGS.footerCopyright,
       contactSupport: contactSupport.trim() || '',
       allowRegistrations,
+      bkashNumber: siteSettings.bkashNumber || '01734211584',
+      nagadNumber: siteSettings.nagadNumber || '01734211584',
+      subscriptionFee: siteSettings.subscriptionFee || 100,
       updatedAt: new Date().toISOString()
     };
 
