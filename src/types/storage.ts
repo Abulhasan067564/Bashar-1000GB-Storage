@@ -57,6 +57,29 @@ export interface UserAccount {
   subscriptionMethod?: 'promo' | 'bkash' | 'nagad' | 'admin';
   subscriptionTrxId?: string;
   subscriptionDate?: string;
+  // Admin review & approval for manual TrxID submission
+  subscriptionRequestStatus?: 'pending' | 'approved' | 'rejected';
+  pendingTrxId?: string;
+  pendingSenderPhone?: string;
+  pendingMethod?: 'bkash' | 'nagad';
+  pendingDate?: string;
+}
+
+export interface PaymentRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmailOrPhone: string;
+  senderPhone: string; // প্রেরক ফোন নাম্বার (01XXXXXXXXX)
+  trxId: string; // ট্রানজেকশন আইডি (TrxID)
+  method: 'bkash' | 'nagad';
+  amount: number; // 100
+  recipientNumber: string; // 01734211584
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  adminNote?: string;
 }
 
 export interface AdminCredentials {

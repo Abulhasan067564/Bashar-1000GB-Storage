@@ -30,6 +30,11 @@ interface SubscriptionModalProps {
   currentUser: UserAccount;
   siteSettings?: SiteSettings;
   onUnlockLifetime: (method: 'promo' | 'bkash' | 'nagad', trxId?: string) => Promise<void> | void;
+  onSubmitManualPaymentRequest?: (data: {
+    senderPhone: string;
+    trxId: string;
+    method: 'bkash' | 'nagad';
+  }) => Promise<void> | void;
   lang: 'bn' | 'en';
   isForceLocked?: boolean;
 }
@@ -42,10 +47,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   currentUser,
   siteSettings,
   onUnlockLifetime,
+  onSubmitManualPaymentRequest,
   lang,
   isForceLocked = false
 }) => {
-  const [activeTab, setActiveTab] = useState<'gateway' | 'manual' | 'promo'>('gateway');
+  const [activeTab, setActiveTab] = useState<'manual' | 'gateway' | 'promo'>('manual');
   const [selectedMethod, setSelectedMethod] = useState<'bkash' | 'nagad'>('bkash');
   
   // Interactive Gateway States
@@ -59,8 +65,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const [smsBanner, setSmsBanner] = useState<string | null>(null);
 
   // Manual TrxID state
-  const [manualPhone, setManualPhone] = useState('');
-  const [manualTrxId, setManualTrxId] = useState('');
+  const [manualPhone, setManualPhone] = useState(
+    currentUser?.pendingSenderPhone || currentUser?.emailOrPhone?.replace(/[^0-9]/g, '').slice(-11) || ''
+  );
+  const [manualTrxId, setManualTrxId] = useState(currentUser?.pendingTrxId || '');
+  const [isManualSubmitted, setIsManualSubmitted] = useState(false);
 
   // Promo code state
   const [promoCodeInput, setPromoCodeInput] = useState('');
@@ -200,12 +209,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     }
   };
 
-  // Handle Manual TrxID submission
+  // Handle Manual TrxID submission (অ্যাডমিন প্যানেলে জমা হবে, অ্যাডমিন অ্যাপ্রুভ দিলে আজীবন আনলক হবে)
   const handleManualPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!manualPhone.trim() || manualPhone.trim().length < 11) {
+    const cleanPhone = manualPhone.trim();
+    if (!cleanPhone || cleanPhone.length < 11) {
       setErrorMessage(
         lang === 'bn' 
           ? 'অনুগ্রহ করে সঠিক প্রেরক বিকাশ/নগদ নম্বর (১১ ডিজিট) দিন।' 
@@ -214,7 +224,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       return;
     }
 
-    if (!manualTrxId.trim() || manualTrxId.trim().length < 6) {
+    const cleanTrx = manualTrxId.trim().toUpperCase();
+    if (!cleanTrx || cleanTrx.length < 5) {
       setErrorMessage(
         lang === 'bn' 
           ? 'অনুগ্রহ করে সঠিক ট্রানজেকশন আইডি (TrxID) দিন।' 
@@ -225,13 +236,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const formatted = `${manualPhone.trim()} | TrxID: ${manualTrxId.trim().toUpperCase()} | To: ${targetNumber}`;
-      await onUnlockLifetime(selectedMethod, formatted);
-      setSuccessTrxId(manualTrxId.trim().toUpperCase());
-      setGatewayStep('success');
-      setTimeout(() => {
-        onClose();
-      }, 2200);
+      if (onSubmitManualPaymentRequest) {
+        await onSubmitManualPaymentRequest({
+          senderPhone: cleanPhone,
+          trxId: cleanTrx,
+          method: selectedMethod
+        });
+      }
+      setIsManualSubmitted(true);
     } catch (err) {
       setErrorMessage(lang === 'bn' ? 'পেমেন্ট সাবমিট করতে সমস্যা হয়েছে।' : 'Payment submission failed.');
     } finally {
@@ -419,34 +431,34 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800 text-xs font-semibold">
                 <button
                   type="button"
+                  onClick={() => setActiveTab('manual')}
+                  className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    activeTab === 'manual'
+                      ? 'bg-gradient-to-r from-cyan-500 via-teal-500 to-blue-600 text-slate-950 font-bold shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span className="truncate">{lang === 'bn' ? 'সরাসরি সেন্ড মানি (TrxID)' : 'Direct TrxID'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => { setActiveTab('gateway'); setGatewayStep('number'); }}
-                  className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     activeTab === 'gateway'
                       ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white font-bold shadow-md'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  <span className="truncate">{lang === 'bn' ? 'সেন্ড মানি সিস্টেম' : 'Send Money'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('manual')}
-                  className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                    activeTab === 'manual'
-                      ? 'bg-slate-800 text-cyan-300 font-bold border border-slate-700'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span className="truncate">{lang === 'bn' ? 'ম্যানুয়াল TrxID' : 'Manual TrxID'}</span>
+                  <span className="truncate">{lang === 'bn' ? 'অটো ওটিপি গেটওয়ে' : 'Auto Gateway'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setActiveTab('promo')}
-                  className={`py-2 px-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`py-2 px-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                     activeTab === 'promo'
                       ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
                       : 'text-slate-400 hover:text-white'
@@ -759,64 +771,173 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 2: MANUAL TRXID SUBMISSION */}
+              {/* TAB 2: MANUAL TRXID SUBMISSION (অ্যাডমিন প্যানেলে যুক্ত হবে, অ্যাপ্রুভ দিলে আজীবন আনলক হবে) */}
               {activeTab === 'manual' && (
-                <div className="space-y-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 animate-in fade-in">
-                  <div className="text-xs text-slate-300 leading-relaxed bg-slate-900 p-3 rounded-xl border border-slate-800">
-                    <p className="font-semibold text-cyan-300 mb-1">
-                      {lang === 'bn' ? 'সরাসরি অ্যাপ থেকে সেন্ড মানি করার নিয়ম:' : 'Manual Send Money Instructions:'}
-                    </p>
-                    <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-400">
-                      <li>{lang === 'bn' ? 'আপনার বিকাশ বা নগদ অ্যাপ ওপেন করুন' : 'Open your bKash or Nagad App'}</li>
-                      <li>
-                        {lang === 'bn' 
-                          ? <><strong>Send Money (সেন্ড মানি)</strong> অপশনে গিয়ে প্রাপক নাম্বারে <strong>{targetNumber}</strong> লিখুন</>
-                          : <>Send 100 Tk to <strong>{targetNumber}</strong></>}
-                      </li>
-                      <li>{lang === 'bn' ? 'পরিমাণ ১০০ টাকা দিয়ে পিন কোড দিয়ে সেন্ড সম্পন্ন করুন' : 'Enter amount 100 Tk and send'}</li>
-                      <li>{lang === 'bn' ? 'প্রাপ্ত ট্রানজেকশন আইডি (TrxID) নিচের বক্সে দিন' : 'Paste the Transaction ID (TrxID) below'}</li>
-                    </ol>
-                  </div>
-
-                  <form onSubmit={handleManualPaymentSubmit} className="space-y-2.5">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                          {lang === 'bn' ? 'প্রেরক ফোন নাম্বার:' : 'Sender Phone:'}
-                        </label>
-                        <input
-                          type="tel"
-                          value={manualPhone}
-                          onChange={e => setManualPhone(e.target.value)}
-                          placeholder="01XXXXXXXXX"
-                          required
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 font-mono focus:border-cyan-400 focus:outline-none"
-                        />
+                <div className="space-y-3.5 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80 animate-in fade-in">
+                  
+                  {/* Pending Review Card */}
+                  {(currentUser.subscriptionRequestStatus === 'pending' || isManualSubmitted) ? (
+                    <div className="bg-amber-950/40 border border-amber-500/50 rounded-2xl p-4 space-y-3 animate-in fade-in">
+                      <div className="flex items-center gap-2.5 text-amber-300 font-bold text-xs">
+                        <Clock className="w-5 h-5 animate-pulse text-amber-400 shrink-0" />
+                        <span>{lang === 'bn' ? '⏳ আপনার পেমেন্ট রিকোয়েস্ট পেন্ডিং আছে' : 'Payment Under Review (Pending)'}</span>
+                      </div>
+                      
+                      <div className="text-xs text-slate-300 space-y-1.5 bg-slate-950/90 p-3 rounded-xl border border-slate-800">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">{lang === 'bn' ? 'প্রেরক ফোন নম্বর:' : 'Sender Phone:'}</span>
+                          <span className="font-mono text-white font-bold">{currentUser.pendingSenderPhone || manualPhone}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">{lang === 'bn' ? 'ট্রানজেকশন আইডি:' : 'TrxID:'}</span>
+                          <span className="font-mono text-cyan-300 font-bold">{currentUser.pendingTrxId || manualTrxId}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">{lang === 'bn' ? 'পদ্ধতি ও পরিমাণ:' : 'Method & Amount:'}</span>
+                          <span className="font-bold text-amber-300">
+                            {(currentUser.pendingMethod || selectedMethod) === 'bkash' ? 'bKash (বিকাশ)' : 'Nagad (নগদ)'} • ১০০ টাকা
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">{lang === 'bn' ? 'স্ট্যাটাস:' : 'Status:'}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            {lang === 'bn' ? 'অ্যাডমিন পর্যালোচনায় আছে' : 'Pending Admin Approval'}
+                          </span>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                          {lang === 'bn' ? 'ট্রানজেকশন আইডি (TrxID):' : 'Transaction ID:'}
-                        </label>
-                        <input
-                          type="text"
-                          value={manualTrxId}
-                          onChange={e => setManualTrxId(e.target.value.toUpperCase())}
-                          placeholder="যেমন: BL89XQW2"
-                          required
-                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-cyan-300 font-mono font-bold uppercase placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
-                        />
-                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        {lang === 'bn'
+                          ? 'আপনার ১০০ টাকার ট্রানজেকশন আইডি অ্যাডমিন প্যানেলে জমা হয়েছে। অ্যাডমিন অ্যাপ্রুভ দিলে সাথে সাথে আপনার একাউন্ট আজীবনের জন্য আনলক হয়ে যাবে, আর রিজেক্ট দিলে ক্যানসেল হয়ে যাবে।'
+                          : 'Your TrxID has been submitted to the Admin Panel. Once the admin approves, your account will be permanently unlocked.'}
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => { setIsManualSubmitted(false); }}
+                        className="text-[11px] text-cyan-400 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{lang === 'bn' ? 'পুনরায় নতুন TrxID জমা দিতে চান?' : 'Re-submit with another TrxID'}</span>
+                      </button>
                     </div>
+                  ) : (
+                    <>
+                      {/* Previous Rejection Alert */}
+                      {currentUser.subscriptionRequestStatus === 'rejected' && (
+                        <div className="bg-red-950/60 border border-red-700/60 rounded-xl p-3 text-xs text-red-200 space-y-1">
+                          <div className="font-bold flex items-center gap-1.5 text-red-300">
+                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                            <span>{lang === 'bn' ? 'পূর্বের TrxID বাতিল (Rejected) হয়েছে' : 'Previous TrxID Rejected'}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-300">
+                            {lang === 'bn'
+                              ? 'আপনার পূর্বের সাবমিট করা ট্রানজেকশন আইডি সঠিক পাওয়া যায়নি বিধায় অ্যাডমিন বাতিল করেছে। অনুগ্রহ করে সঠিক TrxID দিয়ে আবার জমা দিন।'
+                              : 'Your previous TrxID was rejected by admin. Please submit the correct TrxID.'}
+                          </p>
+                        </div>
+                      )}
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer disabled:opacity-60"
-                    >
-                      {isSubmitting ? (lang === 'bn' ? 'যাচাই করা হচ্ছে...' : 'Verifying...') : (lang === 'bn' ? 'TrxID জমা দিন ও আনলক করুন' : 'Submit TrxID & Unlock')}
-                    </button>
-                  </form>
+                      {/* Instructions Box */}
+                      <div className="text-xs text-slate-300 leading-relaxed bg-slate-900/90 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <p className="font-bold text-cyan-300 text-xs">
+                          {lang === 'bn' ? 'সরাসরি অ্যাপ থেকে সেন্ড মানি করার নিয়ম:' : 'Manual Send Money Instructions:'}
+                        </p>
+                        <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-300">
+                          <li>{lang === 'bn' ? 'আপনার বিকাশ বা নগদ অ্যাপ ওপেন করুন' : 'Open your bKash or Nagad App'}</li>
+                          <li>
+                            {lang === 'bn' 
+                              ? <>Send Money (সেন্ড মানি) অপশনে গিয়ে প্রাপক নাম্বারে <strong className="text-cyan-300 font-mono font-bold">{targetNumber}</strong> লিখুন</>
+                              : <>In Send Money, enter recipient number <strong className="text-cyan-300 font-mono">{targetNumber}</strong></>}
+                          </li>
+                          <li>{lang === 'bn' ? 'পরিমাণ ১০০ টাকা দিয়ে পিন কোড দিয়ে সেন্ড সম্পন্ন করুন' : 'Enter amount 100 Tk and confirm with PIN'}</li>
+                          <li>{lang === 'bn' ? 'প্রাপ্ত ট্রানজেকশন আইডি (TrxID) নিচের বক্সে দিন' : 'Enter received Transaction ID (TrxID) below'}</li>
+                        </ol>
+                      </div>
+
+                      {/* Method Selection */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMethod('bkash')}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                            selectedMethod === 'bkash'
+                              ? 'bg-pink-600/20 border-pink-500 text-pink-300'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full bg-pink-500" />
+                          <span>bKash (বিকাশ)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMethod('nagad')}
+                          className={`py-2 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                            selectedMethod === 'nagad'
+                              ? 'bg-orange-600/20 border-orange-500 text-orange-300'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full bg-orange-500" />
+                          <span>Nagad (নগদ)</span>
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleManualPaymentSubmit} className="space-y-3 pt-1">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                            {lang === 'bn' ? 'প্রেরক ফোন নাম্বার:' : 'Sender Phone:'}
+                          </label>
+                          <input
+                            type="tel"
+                            value={manualPhone}
+                            onChange={e => setManualPhone(e.target.value)}
+                            placeholder="01XXXXXXXXX"
+                            required
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-600 font-mono focus:border-cyan-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-200 block mb-1">
+                            {lang === 'bn' ? 'ট্রানজেকশন আইডি (TrxID):' : 'Transaction ID (TrxID):'}
+                          </label>
+                          <input
+                            type="text"
+                            value={manualTrxId}
+                            onChange={e => setManualTrxId(e.target.value.toUpperCase())}
+                            placeholder={lang === 'bn' ? 'যেমন: BL89XQW2' : 'e.g. BL89XQW2'}
+                            required
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-cyan-300 font-mono font-bold uppercase placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none"
+                          />
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 leading-relaxed">
+                          {lang === 'bn'
+                            ? 'সে সময় জমা দিবে। সে সময় অ্যাডমিন প্যানেলে যুক্ত হবে। অ্যাপ্রুভ দিলে এটা হয়ে যাবে, রিজেক্ট দিলে এটা ক্যানসেল হয়ে যাবে।'
+                            : 'Submitted to admin panel. Will unlock once approved, or cancel if rejected.'}
+                        </p>
+
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                              <span>{lang === 'bn' ? 'জমা দেওয়া হচ্ছে...' : 'Submitting...'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck className="w-4 h-4 stroke-[2.5]" />
+                              <span>{lang === 'bn' ? 'TrxID জমা দিন ও আনলক করুন' : 'Submit TrxID & Unlock'}</span>
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </>
+                  )}
                 </div>
               )}
 

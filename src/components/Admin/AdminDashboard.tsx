@@ -31,9 +31,15 @@ import {
   Image as ImageIcon,
   Upload,
   X,
-  Sliders
+  Sliders,
+  Crown,
+  CreditCard,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Smartphone
 } from 'lucide-react';
-import { UserAccount, AdminCredentials, SiteSettings } from '../../types/storage';
+import { UserAccount, AdminCredentials, SiteSettings, PaymentRequest } from '../../types/storage';
 import { WebsiteSettingsModal } from './WebsiteSettingsModal';
 
 const PRESET_LOGOS = [
@@ -49,11 +55,16 @@ interface AdminDashboardProps {
   usersList: UserAccount[];
   adminCredentials: AdminCredentials;
   siteSettings: SiteSettings;
+  paymentRequests?: PaymentRequest[];
   onUpdateSiteSettings: (settings: SiteSettings) => Promise<void> | void;
   onUpdateUsersList: (users: UserAccount[]) => void;
   onUpdateAdminCredentials: (creds: AdminCredentials) => void;
   onDeleteUser: (userId: string) => Promise<void>;
   onDeleteAllUsers?: () => Promise<void>;
+  onApprovePaymentRequest?: (requestId: string, userId: string) => Promise<void> | void;
+  onRejectPaymentRequest?: (requestId: string, userId: string, adminNote?: string) => Promise<void> | void;
+  onDeletePaymentRequest?: (requestId: string) => Promise<void> | void;
+  onDirectUnlockUser?: (userId: string) => Promise<void> | void;
   onLogoutAdmin: () => void;
   onBackToApp: () => void;
   onRefreshData?: () => Promise<void>;
@@ -64,23 +75,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   usersList,
   adminCredentials,
   siteSettings,
+  paymentRequests = [],
   onUpdateSiteSettings,
   onUpdateUsersList,
   onUpdateAdminCredentials,
   onDeleteUser,
   onDeleteAllUsers,
+  onApprovePaymentRequest,
+  onRejectPaymentRequest,
+  onDeletePaymentRequest,
+  onDirectUnlockUser,
   onLogoutAdmin,
   onBackToApp,
   onRefreshData,
   lang
 }) => {
+  // Main Admin Tab: 'users' (Sign up users list) | 'payments' (TrxID approvals)
+  const [adminTab, setAdminTab] = useState<'users' | 'payments'>('users');
+
   // Website Customization Modal state
   const [isSiteSettingsOpen, setIsSiteSettingsOpen] = useState(false);
 
-  // Search & Filter state
+  // Search & Filter state for Users
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name'>('newest');
+
+  // Search & Filter state for Payment Requests
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [rejectingRequest, setRejectingRequest] = useState<PaymentRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   // Modals state
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<UserAccount | null>(null);

@@ -15,7 +15,7 @@ import {
   disableNetwork,
   enableNetwork
 } from 'firebase/firestore';
-import { UserAccount, StorageFile, AdminCredentials, SiteSettings } from '../types/storage';
+import { UserAccount, StorageFile, AdminCredentials, SiteSettings, PaymentRequest } from '../types/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -632,6 +632,88 @@ export async function loadSiteSettingsFromFirestore(): Promise<SiteSettings | nu
     }
     handleFirestoreError(error, OperationType.GET, path);
     return null;
+  }
+}
+
+// Save Payment Request to Firestore (collection: payment_requests)
+export async function savePaymentRequestToFirestore(request: PaymentRequest): Promise<void> {
+  const path = `payment_requests/${request.id}`;
+  try {
+    const cleanRequest: Record<string, any> = {};
+    for (const [key, val] of Object.entries(request)) {
+      if (val !== undefined) {
+        cleanRequest[key] = val;
+      }
+    }
+    await setDoc(doc(db, 'payment_requests', request.id), cleanRequest, { merge: true });
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Load all Payment Requests from Firestore
+export async function loadPaymentRequestsFromFirestore(): Promise<PaymentRequest[]> {
+  if (quotaExceededState) return [];
+  const path = 'payment_requests';
+  try {
+    const snap = await getDocs(collection(db, 'payment_requests'));
+    const requests: PaymentRequest[] = [];
+    snap.forEach((d) => {
+      requests.push(d.data() as PaymentRequest);
+    });
+    // Sort newest first
+    requests.sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+    return requests;
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return [];
+    }
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+// Update Payment Request status in Firestore
+export async function updatePaymentRequestStatusInFirestore(
+  requestId: string,
+  status: 'approved' | 'rejected',
+  reviewedBy?: string,
+  adminNote?: string
+): Promise<void> {
+  const path = `payment_requests/${requestId}`;
+  try {
+    const upd: Record<string, any> = {
+      status,
+      reviewedAt: new Date().toISOString()
+    };
+    if (reviewedBy) upd.reviewedBy = reviewedBy;
+    if (adminNote) upd.adminNote = adminNote;
+    await setDoc(doc(db, 'payment_requests', requestId), upd, { merge: true });
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return;
+    }
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+// Delete Payment Request
+export async function deletePaymentRequestFromFirestore(requestId: string): Promise<void> {
+  const path = `payment_requests/${requestId}`;
+  try {
+    await deleteDoc(doc(db, 'payment_requests', requestId));
+  } catch (error) {
+    if (isQuotaError(error)) {
+      setQuotaExceeded(true);
+      return;
+    }
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 
