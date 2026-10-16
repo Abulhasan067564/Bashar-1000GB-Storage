@@ -63,7 +63,10 @@ import { MoveCopyModal } from './components/Modals/MoveCopyModal';
 import { AnalyticsModal } from './components/Modals/AnalyticsModal';
 import { CalculatorModal } from './components/Modals/CalculatorModal';
 import { ScreenRecorderModal } from './components/Modals/ScreenRecorderModal';
+import { VoiceRecorderModal } from './components/Modals/VoiceRecorderModal';
+import { SubscriptionModal } from './components/Modals/SubscriptionModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
+import { getTrialStatus, getNextScreenRecordNumber, getNextVoiceRecordNumber, toBengaliDigits } from './utils/bengaliNaming';
 import { 
   Cloud, 
   Upload, 
@@ -74,7 +77,12 @@ import {
   ArchiveRestore,
   AlertTriangle,
   Bell,
-  X
+  X,
+  Crown,
+  Lock,
+  Clock,
+  Sparkles,
+  CreditCard
 } from 'lucide-react';
 
 const DEFAULT_ADMIN: AdminCredentials = {
@@ -225,6 +233,8 @@ export default function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
+  const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -234,6 +244,43 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [quotaExceeded, setQuotaExceededState] = useState(isQuotaExceeded());
   const [isQuotaDismissed, setIsQuotaDismissed] = useState(false);
+
+  // 30-Day Free Trial & Lifetime Subscription status
+  const trialStatus = useMemo(() => getTrialStatus(currentUser), [currentUser]);
+
+  // Sequential recording counters
+  const screenRecordsCount = useMemo(() => getNextScreenRecordNumber(files) - 1, [files]);
+  const voiceRecordsCount = useMemo(() => getNextVoiceRecordNumber(files) - 1, [files]);
+
+  // Lifetime Unlock handler (Via 100 Tk bKash/Nagad or secret promo code Bashar2026@100gb)
+  const handleUnlockLifetime = async (method: 'promo' | 'bkash' | 'nagad', trxId?: string) => {
+    if (!currentUser) return;
+    const updatedUser: UserAccount = {
+      ...currentUser,
+      isLifetimeUnlocked: true,
+      subscriptionMethod: method,
+      subscriptionTrxId: trxId,
+      subscriptionDate: new Date().toISOString()
+    };
+
+    setCurrentUser(updatedUser);
+
+    const updatedList = usersList.map(u => u.id === updatedUser.id ? updatedUser : u);
+    setUsersList(updatedList);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedList));
+
+    try {
+      await saveUserToFirestore(updatedUser);
+    } catch (err) {
+      console.warn('Subscription Firestore sync notice:', err);
+    }
+
+    showToast(
+      lang === 'bn' 
+        ? '🎉 অভিনন্দন! আপনার অ্যাকাউন্টটি আজীবনের জন্য আনলক হয়েছে!' 
+        : '🎉 Congratulations! 1000GB Cloud Drive lifetime unlocked!'
+    );
+  };
 
   useEffect(() => {
     return subscribeQuotaExceeded((exceeded) => {
@@ -800,6 +847,11 @@ export default function App() {
   // Create Folder
   const handleCreateFolder = (folderName: string): StorageFile | null => {
     if (!currentUser) return null;
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(lang === 'bn' ? '১ মাস ফ্রি ব্যবহারের মেয়াদ শেষ! ফোল্ডার তৈরি করতে ১০০ টাকা সেন্ড মানি করুন।' : 'Trial expired. Please send 100 Tk.', 'error');
+      return null;
+    }
     const now = new Date().toISOString();
     const newFolder: StorageFile = {
       id: 'folder_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8),
@@ -827,6 +879,11 @@ export default function App() {
 
   // Create File
   const handleCreateFile = async (newFile: StorageFile) => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(lang === 'bn' ? '১ মাস ফ্রি ব্যবহারের মেয়াদ শেষ! ফাইল সংরক্ষণ করতে ১০০ টাকা সেন্ড মানি করুন।' : 'Trial expired. Please send 100 Tk.', 'error');
+      return;
+    }
     const enriched = {
       ...newFile,
       ownerId: newFile.ownerId || (currentUser ? currentUser.id : 'default'),
@@ -836,6 +893,51 @@ export default function App() {
     saveFileToFirestore(enriched, currentUser?.emailOrPhone).catch(() => {});
     setFiles(prev => [enriched, ...prev]);
     showToast(lang === 'bn' ? `"${enriched.name}" ফাইল তৈরি হয়েছে!` : `File "${enriched.name}" created!`);
+  };
+
+  // Safe Preview File Guard
+  const handlePreviewFile = (file: StorageFile) => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(
+        lang === 'bn' 
+          ? '১ মাস ফ্রি ট্রায়াল শেষ হয়েছে! ফাইল দেখতে ১০০ টাকা বিকাশ বা নগদে সেন্ড মানি করুন।' 
+          : 'Trial expired. Send 100 Tk to view files.',
+        'error'
+      );
+      return;
+    }
+    setPreviewFile(file);
+  };
+
+  // Safe Download File Guard
+  const handleDownloadFile = async (file: StorageFile) => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(
+        lang === 'bn' 
+          ? '১ মাস ফ্রি ট্রায়াল শেষ হয়েছে! ফাইল ডাউনলোড করতে ১০০ টাকা বিকাশ বা নগদে সেন্ড মানি করুন।' 
+          : 'Trial expired. Send 100 Tk to download files.',
+        'error'
+      );
+      return;
+    }
+    await downloadSingleFile(file);
+  };
+
+  // Safe Open Upload Guard
+  const handleOpenUpload = () => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(
+        lang === 'bn' 
+          ? '১ মাস ফ্রি ট্রায়াল শেষ হয়েছে! ফাইল আপলোড করতে ১০০ টাকা বিকাশ বা নগদে সেন্ড মানি করুন।' 
+          : 'Trial expired. Send 100 Tk to upload files.',
+        'error'
+      );
+      return;
+    }
+    setIsUploadOpen(true);
   };
 
   // Folder Navigation
@@ -1155,6 +1257,11 @@ export default function App() {
 
   // BATCH DOWNLOAD ALL AS ZIP ("সব একসাথে ডাউনলোড")
   const handleBatchDownloadZip = async () => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(lang === 'bn' ? '১ মাস ব্যবহারের পর ফাইল ডাউনলোড করতে ১০০ টাকা সেন্ড মানি করতে হবে।' : 'Trial expired. Please send 100 Tk.', 'error');
+      return;
+    }
     const targetFiles = selectedFileIds.size > 0
       ? filteredFiles.filter(f => selectedFileIds.has(f.id))
       : filteredFiles;
@@ -1181,6 +1288,11 @@ export default function App() {
 
   // Files Uploaded callback (Guaranteed persistent storage to both IndexedDB and LocalStorage)
   const handleFilesUploaded = async (newFiles: StorageFile[]) => {
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(lang === 'bn' ? '১ মাস ব্যবহারের পর ফাইল আপলোড করতে ১০০ টাকা সেন্ড মানি করতে হবে।' : 'Trial expired. Please send 100 Tk.', 'error');
+      return;
+    }
     const ownerId = currentUser ? currentUser.id : 'default';
     const ownerPhone = currentUser ? currentUser.emailOrPhone : '';
     const enrichedFiles = newFiles.map(f => ({
@@ -1225,6 +1337,11 @@ export default function App() {
     mainDragCounterRef.current = 0;
     setIsDragOverWindow(false);
     if (!currentUser) return;
+    if (trialStatus.isExpired) {
+      setIsSubscriptionOpen(true);
+      showToast(lang === 'bn' ? '১ মাস ব্যবহারের পর ফাইল আপলোড করতে ১০০ টাকা সেন্ড মানি করতে হবে।' : 'Trial expired. Please send 100 Tk.', 'error');
+      return;
+    }
     const droppedFiles = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
     if (droppedFiles.length === 0) return;
 
@@ -1463,11 +1580,13 @@ export default function App() {
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileOpen(true)}
-        onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenUpload={handleOpenUpload}
         onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
         onOpenCalculator={() => setIsCalculatorOpen(true)}
         onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
+        onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
+        onOpenSubscription={() => setIsSubscriptionOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -1497,6 +1616,8 @@ export default function App() {
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
           onOpenCalculator={() => setIsCalculatorOpen(true)}
           onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
+          onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
+          onOpenSubscription={() => setIsSubscriptionOpen(true)}
           onOpenChat={() => setIsChatOpen(true)}
         />
 
@@ -1559,9 +1680,25 @@ export default function App() {
             onToggleSelectAll={handleToggleSelectAll}
             onBatchDelete={handleBatchDelete}
             onBatchDownloadZip={handleBatchDownloadZip}
-            onOpenUpload={() => setIsUploadOpen(true)}
-            onOpenCreateFile={() => setIsCreateFileOpen(true)}
-            onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
+            onOpenUpload={handleOpenUpload}
+            onOpenCreateFile={() => {
+              if (trialStatus.isExpired) {
+                setIsSubscriptionOpen(true);
+                showToast(lang === 'bn' ? '১ মাস ব্যবহারের পর ১০০ টাকা সেন্ড মানি করুন।' : 'Trial expired.', 'error');
+                return;
+              }
+              setIsCreateFileOpen(true);
+            }}
+            onOpenCreateFolder={() => {
+              if (trialStatus.isExpired) {
+                setIsSubscriptionOpen(true);
+                showToast(lang === 'bn' ? '১ মাস ব্যবহারের পর ১০০ টাকা সেন্ড মানি করুন।' : 'Trial expired.', 'error');
+                return;
+              }
+              setIsCreateFolderOpen(true);
+            }}
+            onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
+            onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
             onOpenMoveModal={() => handleOpenMoveModal()}
             onOpenCopyModal={() => handleOpenCopyModal()}
             clipboard={clipboard}
@@ -1584,6 +1721,68 @@ export default function App() {
 
           {/* Files Container */}
           <div className="flex-1 p-4 lg:p-6">
+            {/* 30-Day Trial Expired Lock Barrier Banner (ফাইল আপলোড করতে পারবেনা, দেখতে পারবে না, ডাউনলোড করতে পারবে না) */}
+            {trialStatus.isExpired && (
+              <div className="mb-6 p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-red-950/90 via-slate-900/95 to-amber-950/90 border-2 border-red-500/50 shadow-2xl space-y-4 animate-in fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
+                      <Lock className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                        <span>{lang === 'bn' ? '⚠️ ১ মাস (৩০ দিন) ফ্রি ট্রায়াল সম্পন্ন হয়েছে!' : '⚠️ 1 Month Free Trial Expired!'}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30 font-bold">
+                          {lang === 'bn' ? 'লকড' : 'Locked'}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+                        {lang === 'bn' 
+                          ? '১ মাস ব্যবহারের পর ফাইল আপলোড, দেখতে এবং ডাউনলোড করতে বিকাশ বা নগদে একবার ১০০ টাকা সেন্ড মানি করুন। একবার ১০০ টাকা দিলে সারা জীবনের লাগি আর টাকা লাগবে না।' 
+                          : 'To view, download, or upload files, please send 100 Tk once via bKash or Nagad for lifetime access.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setIsSubscriptionOpen(true)}
+                    className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer transition transform active:scale-95 shrink-0"
+                  >
+                    <Crown className="w-4 h-4 fill-slate-950" />
+                    <span>{lang === 'bn' ? '১০০ টাকা সেন্ড মানি বা কোড দিন' : 'Send 100 Tk or Enter Code'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 30-Day Trial Active Countdown Bar (একদিন গেলে ২৯ দিন দেখানো হবে এভাবে চলতে থাকবে ৩০ দিন) */}
+            {!trialStatus.isLifetime && !trialStatus.isExpired && (
+              <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-indigo-950/40 border border-cyan-800/40 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 shrink-0">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-white">
+                      {lang === 'bn' 
+                        ? `⏳ আপনার ৩০ দিন ব্যবহারের মধ্যে আর ${toBengaliDigits(trialStatus.remainingDays)} দিন বাকি আছে` 
+                        : `⏳ ${trialStatus.remainingDays} days remaining in your 30-day free trial`}
+                    </span>
+                    <span className="text-slate-400 ml-1.5 hidden sm:inline">
+                      {lang === 'bn' ? '• এক মাস হওয়ার আগে চাইলে যেকোনো সময় ১০০ টাকা সেন্ড মানি করে আজীবনের জন্য আনলক করতে পারবেন' : '• You can unlock lifetime anytime for 100 Tk'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsSubscriptionOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ml-auto"
+                >
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>{lang === 'bn' ? '১০০৳ আজীবন আনলক' : '100 Tk Lifetime'}</span>
+                </button>
+              </div>
+            )}
             {/* Recycle Bin Reassurance Notice Banner */}
             {activeTab === 'trash' && (
               <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-red-950/40 via-slate-900/60 to-red-950/40 border border-red-900/40 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">

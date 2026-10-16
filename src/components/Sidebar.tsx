@@ -10,6 +10,8 @@ import {
   BarChart3,
   Calculator,
   Video,
+  Mic,
+  Crown,
   Bot
 } from 'lucide-react';
 
@@ -26,6 +28,8 @@ interface SidebarProps {
   onOpenAnalytics?: () => void;
   onOpenCalculator?: () => void;
   onOpenScreenRecorder?: () => void;
+  onOpenVoiceRecorder?: () => void;
+  onOpenSubscription?: () => void;
   onOpenChat?: () => void;
 }
 
@@ -147,7 +151,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>{lang === 'bn' ? 'স্ক্রিন রেকর্ডার' : 'Screen Recorder'}</span>
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                  {lang === 'bn' ? 'নতুন' : 'New'}
+                  {lang === 'bn' ? 'ভিডিও' : 'Video'}
+                </span>
+              </button>
+            )}
+
+            {onOpenVoiceRecorder && (
+              <button
+                onClick={onOpenVoiceRecorder}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Mic className="w-4 h-4 text-indigo-400" />
+                  <span>{lang === 'bn' ? 'ভয়েস রেকর্ডার' : 'Voice Recorder'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {lang === 'bn' ? 'অডিও' : 'Audio'}
                 </span>
               </button>
             )}
@@ -163,6 +182,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                   AI
+                </span>
+              </button>
+            )}
+
+            {onOpenSubscription && (
+              <button
+                onClick={onOpenSubscription}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition cursor-pointer shadow-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  <span>{lang === 'bn' ? '১০০৳ আজীবন আনলক' : '100 Tk Lifetime'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                  VIP
                 </span>
               </button>
             )}

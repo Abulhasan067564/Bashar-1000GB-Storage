@@ -51,6 +51,12 @@ export interface UserAccount {
   status?: 'active' | 'disabled'; // একাউন্ট সক্রিয় নাকি নিষ্ক্রিয়
   role?: 'user' | 'admin';
   lastLoginAt?: string;
+  // 30-day Free Trial & Lifetime Subscription
+  trialStartDate?: string; // 30-day trial start ISO timestamp (defaults to createdAt)
+  isLifetimeUnlocked?: boolean; // True if paid 100 Tk or used secret promo code
+  subscriptionMethod?: 'promo' | 'bkash' | 'nagad' | 'admin';
+  subscriptionTrxId?: string;
+  subscriptionDate?: string;
 }
 
 export interface AdminCredentials {
@@ -84,6 +90,10 @@ export interface SiteSettings {
   contactSupport?: string; // Support WhatsApp / Telegram or Email link
   allowRegistrations?: boolean; // Enable or disable new user signups
   themeColor?: 'cyan' | 'emerald' | 'violet' | 'amber' | 'rose';
+  // Payment info for 100 Taka lifetime subscription
+  bkashNumber?: string;
+  nagadNumber?: string;
+  subscriptionFee?: number;
   updatedAt?: string;
 }
 
@@ -103,7 +113,10 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   footerCopyright: '© 2026 Bashar 1000GB Cloud Storage. সর্বস্বত্ব সংরক্ষিত।',
   contactSupport: '',
   allowRegistrations: true,
-  themeColor: 'cyan'
+  themeColor: 'cyan',
+  bkashNumber: '01890342371', // Personal bKash Send Money
+  nagadNumber: '01890342371', // Personal Nagad Send Money
+  subscriptionFee: 100
 };
 
 export type ViewMode = 'grid' | 'list';

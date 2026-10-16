@@ -21,7 +21,9 @@ import {
   HardDrive,
   Folder,
   ArrowLeft,
-  ChevronRight
+  ChevronRight,
+  Video,
+  Mic
 } from 'lucide-react';
 
 interface ActionBarProps {
@@ -36,6 +38,8 @@ interface ActionBarProps {
   onOpenUpload: () => void;
   onOpenCreateFile: () => void;
   onOpenCreateFolder: () => void;
+  onOpenScreenRecorder?: () => void;
+  onOpenVoiceRecorder?: () => void;
   onOpenMoveModal: () => void;
   onOpenCopyModal: () => void;
   clipboard: ClipboardState | null;
@@ -68,6 +72,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenUpload,
   onOpenCreateFile,
   onOpenCreateFolder,
+  onOpenScreenRecorder,
+  onOpenVoiceRecorder,
   onOpenMoveModal,
   onOpenCopyModal,
   clipboard,
@@ -209,6 +215,28 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
               <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
             </button>
+
+            {onOpenScreenRecorder && (
+              <button
+                onClick={onOpenScreenRecorder}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 text-rose-300 hover:text-rose-100 border border-rose-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+                title={lang === 'bn' ? 'স্ক্রিন রেকর্ডার' : 'Screen Recorder'}
+              >
+                <Video className="w-3.5 h-3.5 text-rose-400" />
+                <span>{lang === 'bn' ? 'স্ক্রিন রেকর্ড' : 'Record'}</span>
+              </button>
+            )}
+
+            {onOpenVoiceRecorder && (
+              <button
+                onClick={onOpenVoiceRecorder}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/50 hover:bg-indigo-900/70 text-indigo-300 hover:text-indigo-100 border border-indigo-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+                title={lang === 'bn' ? 'ভয়েস রেকর্ডার' : 'Voice Recorder'}
+              >
+                <Mic className="w-3.5 h-3.5 text-indigo-400" />
+                <span>{lang === 'bn' ? 'ভয়েস রেকর্ড' : 'Voice'}</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenUpload}

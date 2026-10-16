@@ -1,6 +1,28 @@
 import React from 'react';
 import { UserAccount, StorageStats, SiteSettings } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3, Bot, Calculator, Video } from 'lucide-react';
+import { 
+  Cloud, 
+  Search, 
+  Upload, 
+  Files, 
+  ShieldCheck, 
+  Languages, 
+  User, 
+  LogOut, 
+  Lock, 
+  KeyRound, 
+  Sparkles, 
+  RefreshCw, 
+  Youtube, 
+  BarChart3, 
+  Bot, 
+  Calculator, 
+  Video,
+  Mic,
+  Crown,
+  Clock
+} from 'lucide-react';
+import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -12,6 +34,8 @@ interface NavbarProps {
   onOpenChat?: () => void;
   onOpenCalculator?: () => void;
   onOpenScreenRecorder?: () => void;
+  onOpenVoiceRecorder?: () => void;
+  onOpenSubscription?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   stats: StorageStats;
@@ -33,6 +57,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenChat,
   onOpenCalculator,
   onOpenScreenRecorder,
+  onOpenVoiceRecorder,
+  onOpenSubscription,
   searchQuery,
   onSearchChange,
   stats,
@@ -43,6 +69,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSyncFiles,
   isSyncingFiles = false
 }) => {
+  const trial = getTrialStatus(currentUser);
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 MB';
     const mb = bytes / (1024 * 1024);
@@ -162,6 +189,59 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Video className="w-4 h-4 text-rose-400" />
               <span className="hidden md:inline">{lang === 'bn' ? 'স্ক্রিন রেকর্ড' : 'Record'}</span>
+            </button>
+          )}
+
+          {/* Voice Recorder Button */}
+          {onOpenVoiceRecorder && (
+            <button
+              onClick={onOpenVoiceRecorder}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-indigo-950"
+              title={lang === 'bn' ? 'ভয়েস রেকর্ডার (ক্লিয়ার মাইক্রোফোন অডিও)' : 'Voice Recorder (Clear Mic Audio)'}
+            >
+              <Mic className="w-4 h-4 text-indigo-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'ভয়েস রেকর্ড' : 'Voice'}</span>
+            </button>
+          )}
+
+          {/* 30-Day Trial Countdown / Lifetime Unlock Badge */}
+          {currentUser && onOpenSubscription && (
+            <button
+              onClick={onOpenSubscription}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-sm ${
+                trial.isLifetime
+                  ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                  : trial.isExpired
+                  ? 'bg-red-950/80 border border-red-700 text-red-300 hover:bg-red-900 animate-pulse'
+                  : 'bg-gradient-to-r from-cyan-950 to-indigo-950 border border-cyan-500/40 text-cyan-200 hover:border-cyan-400'
+              }`}
+              title={
+                trial.isLifetime 
+                  ? (lang === 'bn' ? 'আজীবন আনলকড (লাইফটাইম মেম্বার)' : 'Lifetime Unlocked') 
+                  : trial.isExpired
+                  ? (lang === 'bn' ? '১ মাস মেয়াদ শেষ! ১০০ টাকা দিয়ে আনলক করুন' : 'Trial Expired! Pay 100 Tk to unlock')
+                  : (lang === 'bn' ? `৩০ দিন ট্রায়ালের ${toBengaliDigits(trial.remainingDays)} দিন বাকি। এখনই ১০০ টাকা দিয়ে আজীবন আনলক করতে ক্লিক করুন` : `${trial.remainingDays} days remaining`)
+              }
+            >
+              {trial.isLifetime ? (
+                <>
+                  <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+                  <span className="hidden sm:inline">{lang === 'bn' ? 'লাইফটাইম' : 'Lifetime'}</span>
+                </>
+              ) : trial.isExpired ? (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-red-400" />
+                  <span>{lang === 'bn' ? 'মেয়াদ শেষ • ১০০৳' : 'Expired • 100 Tk'}</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{lang === 'bn' ? `${toBengaliDigits(trial.remainingDays)} দিন বাকি` : `${trial.remainingDays}d left`}</span>
+                  <span className="hidden xl:inline text-[10px] text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded border border-amber-500/30">
+                    {lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk'}
+                  </span>
+                </>
+              )}
             </button>
           )}
 

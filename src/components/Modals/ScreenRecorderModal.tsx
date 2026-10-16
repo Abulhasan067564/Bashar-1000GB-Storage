@@ -17,15 +17,18 @@ import {
   CheckCircle2, 
   Clock, 
   HardDrive,
-  Settings2
+  Settings2,
+  FileVideo
 } from 'lucide-react';
 import { StorageFile } from '../../types/storage';
+import { getSequentialScreenRecordName } from '../../utils/bengaliNaming';
 
 interface ScreenRecorderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveToDrive?: (file: StorageFile) => void;
   currentUser?: { id: string; emailOrPhone?: string } | null;
+  existingRecordsCount?: number;
   lang: 'bn' | 'en';
 }
 
@@ -34,6 +37,7 @@ export const ScreenRecorderModal: React.FC<ScreenRecorderModalProps> = ({
   onClose,
   onSaveToDrive,
   currentUser,
+  existingRecordsCount = 0,
   lang
 }) => {
   // Option 1: Microphone Audio
@@ -350,10 +354,8 @@ export const ScreenRecorderModal: React.FC<ScreenRecorderModalProps> = ({
 
   const downloadRecording = () => {
     if (!recordedBlob || !recordedVideoUrl) return;
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
-    const timeStr = `${now.getHours()}-${now.getMinutes()}-${now.getSeconds()}`;
-    const filename = `Screen_Recording_${dateStr}_${timeStr}.webm`;
+    const seqName = getSequentialScreenRecordName(existingRecordsCount + 1);
+    const filename = `${seqName}.webm`;
 
     const a = document.createElement('a');
     a.href = recordedVideoUrl;
@@ -368,9 +370,8 @@ export const ScreenRecorderModal: React.FC<ScreenRecorderModalProps> = ({
     setIsSavingToDrive(true);
     try {
       const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const filename = `Screen_Recording_${dateStr}_${timeStr}.webm`;
+      const seqName = getSequentialScreenRecordName(existingRecordsCount + 1);
+      const filename = `${seqName}.webm`;
 
       // Read blob as DataURL
       const reader = new FileReader();
@@ -653,6 +654,15 @@ export const ScreenRecorderModal: React.FC<ScreenRecorderModalProps> = ({
                   controls
                   className="w-full h-full object-contain"
                 />
+              </div>
+
+              {/* Sequential File Name Badge */}
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-cyan-950/70 border border-cyan-500/40 text-cyan-200 text-xs">
+                <FileVideo className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>
+                  {lang === 'bn' ? 'সংরক্ষিত ফাইলের নাম:' : 'Saved File Name:'}{' '}
+                  <strong className="text-white font-bold">{getSequentialScreenRecordName(existingRecordsCount + 1)}</strong>
+                </span>
               </div>
 
               {/* Video Stats */}
