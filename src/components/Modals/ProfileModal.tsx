@@ -13,8 +13,11 @@ import {
   ShieldCheck,
   KeyRound,
   Eye,
-  EyeOff
+  EyeOff,
+  Crown,
+  Clock
 } from 'lucide-react';
+import { getTrialStatus, toBengaliDigits } from '../../utils/bengaliNaming';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -61,6 +64,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const trial = getTrialStatus(currentUser);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -347,6 +352,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </div>
               <span className="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2 py-0.5 rounded-md">
                 {lang === 'bn' ? 'ভেরিফাইড' : 'Verified'}
+              </span>
+            </div>
+
+            {/* Membership / Trial Status */}
+            <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/90 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] text-slate-400 block font-sans">
+                  {lang === 'bn' ? 'সদস্যপদ ও ব্যবহারের মেয়াদ:' : 'Membership & Usage Period:'}
+                </span>
+                <span className={`text-xs font-bold tracking-wide flex items-center gap-1.5 ${
+                  trial.isLifetime ? 'text-amber-300' : trial.isExpired ? 'text-red-400' : 'text-cyan-300'
+                }`}>
+                  {trial.isLifetime ? (
+                    <>
+                      <Crown className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{lang === 'bn' ? '💎 আজীবন সদস্য (লাইফটাইম আনলকড)' : '💎 Lifetime Unlocked'}</span>
+                    </>
+                  ) : trial.isExpired ? (
+                    <span>{lang === 'bn' ? '⚠️ ১ মাস মেয়াদ শেষ (লকড - ১০০৳ সেন্ড মানি করুন)' : 'Trial Expired (Send 100 Tk)'}</span>
+                  ) : (
+                    <span>{lang === 'bn' ? `⏳ ৩০ দিনের মধ্যে আর ${toBengaliDigits(trial.remainingDays)} দিন বাকি` : `${trial.remainingDays} days remaining`}</span>
+                  )}
+                </span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                trial.isLifetime 
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                  : trial.isExpired
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                  : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+              }`}>
+                {trial.isLifetime ? 'VIP' : (lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk')}
               </span>
             </div>
 

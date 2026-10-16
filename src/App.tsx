@@ -1869,8 +1869,8 @@ export default function App() {
                     file={file}
                     isSelected={selectedFileIds.has(file.id)}
                     onToggleSelect={handleToggleSelect}
-                    onPreview={setPreviewFile}
-                    onDownload={downloadSingleFile}
+                    onPreview={handlePreviewFile}
+                    onDownload={handleDownloadFile}
                     onShare={setShareFile}
                     onDelete={handleDeleteFile}
                     onToggleStar={handleToggleStar}
@@ -1904,8 +1904,8 @@ export default function App() {
                         file={file}
                         isSelected={selectedFileIds.has(file.id)}
                         onToggleSelect={handleToggleSelect}
-                        onPreview={setPreviewFile}
-                        onDownload={downloadSingleFile}
+                        onPreview={handlePreviewFile}
+                        onDownload={handleDownloadFile}
                         onShare={setShareFile}
                         onDelete={handleDeleteFile}
                         onToggleStar={handleToggleStar}
@@ -2042,8 +2042,32 @@ export default function App() {
         onClose={() => setIsScreenRecorderOpen(false)}
         onSaveToDrive={handleCreateFile}
         currentUser={currentUser}
+        existingRecordsCount={screenRecordsCount}
         lang={lang}
       />
+
+      {/* Voice Recorder Modal with Mic Audio & Waveform Visualizer */}
+      <VoiceRecorderModal
+        isOpen={isVoiceRecorderOpen}
+        onClose={() => setIsVoiceRecorderOpen(false)}
+        onSaveToDrive={handleCreateFile}
+        currentUser={currentUser}
+        existingRecordsCount={voiceRecordsCount}
+        lang={lang}
+      />
+
+      {/* 30-Day Free Trial & 100 Tk Lifetime Subscription Modal */}
+      {currentUser && (
+        <SubscriptionModal
+          isOpen={isSubscriptionOpen || trialStatus.isExpired}
+          onClose={() => setIsSubscriptionOpen(false)}
+          currentUser={currentUser}
+          siteSettings={siteSettings}
+          onUnlockLifetime={handleUnlockLifetime}
+          lang={lang}
+          isForceLocked={trialStatus.isExpired}
+        />
+      )}
 
       {/* Gemini AI Multi-turn Chatbot */}
       <GeminiChatbot

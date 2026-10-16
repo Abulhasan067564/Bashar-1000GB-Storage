@@ -46,6 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAnalytics,
   onOpenCalculator,
   onOpenScreenRecorder,
+  onOpenVoiceRecorder,
+  onOpenSubscription,
   onOpenChat
 }) => {
   const formatStorage = (bytes: number) => {

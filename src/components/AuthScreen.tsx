@@ -251,7 +251,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
         status: 'active',
         role: 'user',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        trialStartDate: new Date().toISOString(),
+        isLifetimeUnlocked: false
       };
 
       removeDeletedUserId(newUser.id);
