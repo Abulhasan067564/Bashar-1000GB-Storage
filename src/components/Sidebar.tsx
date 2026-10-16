@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActiveTab, StorageStats, SiteSettings } from '../types/storage';
+import { ActiveTab, StorageStats, SiteSettings, UserAccount } from '../types/storage';
 import { 
   Folder, 
   Star, 
@@ -12,19 +12,26 @@ import {
   Video,
   Mic,
   Crown,
-  Bot
+  Bot,
+  Youtube,
+  Clock,
+  X
 } from 'lucide-react';
+import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
 
 interface SidebarProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   stats: StorageStats;
   siteSettings?: SiteSettings;
+  currentUser?: UserAccount | null;
   trashCount: number;
   starredCount: number;
   sharedCount: number;
   vaultCount: number;
   lang: 'bn' | 'en';
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
   onOpenAnalytics?: () => void;
   onOpenCalculator?: () => void;
   onOpenScreenRecorder?: () => void;
@@ -38,11 +45,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   stats,
   siteSettings,
+  currentUser,
   trashCount,
   starredCount,
   sharedCount,
   vaultCount,
   lang,
+  isMobileOpen = false,
+  onCloseMobile,
   onOpenAnalytics,
   onOpenCalculator,
   onOpenScreenRecorder,
@@ -58,64 +68,111 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const totalGb = siteSettings?.storageQuotaGb || 1000;
   const usedGb = stats.usedBytes / (1024 * 1024 * 1024);
-  const percentage = Math.max(0.1, Math.min(100, (usedGb / totalGb) * 100));
+  const percentage = Math.min(100, (usedGb / totalGb) * 100);
+
+  const trial = getTrialStatus(currentUser);
 
   return (
-    <aside className="w-64 bg-slate-900/60 border-r border-slate-800 flex flex-col justify-between p-4 shrink-0 overflow-y-auto">
-      {/* Top Nav List */}
-      <div className="space-y-6">
+    <>
+      {/* Mobile Drawer Backdrop */}
+      {isMobileOpen && (
+        <div 
+          onClick={onCloseMobile}
+          className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm md:hidden animate-in fade-in"
+        />
+      )}
+
+      <aside className={`
+        ${isMobileOpen ? 'fixed inset-y-0 left-0 z-50 flex shadow-2xl animate-in slide-in-from-left duration-200' : 'hidden md:flex'}
+        w-64 bg-slate-900 border-r border-slate-800 p-4 flex-col justify-between shrink-0 select-none overflow-y-auto
+      `}>
+        <div className="space-y-5">
+          {/* Mobile Drawer Header */}
+          {isMobileOpen && (
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 md:hidden">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                <span>{siteSettings?.siteName || 'বাশার ড্রাইভ'}</span>
+              </span>
+              <button 
+                onClick={onCloseMobile}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800 cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         <div>
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider px-3 mb-2 block">
-            {lang === 'bn' ? 'স্টোরেজ নেভিগেশন' : 'Storage Navigation'}
-          </span>
+          {/* Main Navigation */}
           <nav className="space-y-1">
             <button
               onClick={() => onTabChange('all')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === 'all' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'all'
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 font-bold border border-cyan-500/30 shadow-sm shadow-cyan-950'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
             >
               <div className="flex items-center gap-2.5">
                 <Folder className="w-4 h-4 text-cyan-400" />
-                <span>{lang === 'bn' ? 'সকল ফাইল' : 'All Files'}</span>
+                <span>{lang === 'bn' ? 'সকল ফাইল ও ফোল্ডার' : 'All Files & Folders'}</span>
               </div>
-              <span className="text-[11px] text-slate-400 font-mono">{stats.fileCount}</span>
+              <span className="text-[11px] font-mono text-cyan-400/80">{stats.fileCount}</span>
             </button>
 
             <button
               onClick={() => onTabChange('starred')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === 'starred' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'starred'
+                  ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30 shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
             >
               <div className="flex items-center gap-2.5">
-                <Star className="w-4 h-4 text-amber-400" />
-                <span>{lang === 'bn' ? 'পছন্দের ফাইল' : 'Starred Files'}</span>
+                <Star className="w-4 h-4 text-amber-400 fill-amber-400/20" />
+                <span>{lang === 'bn' ? 'তারকাচিহ্নিত (প্রিয়)' : 'Starred Favorites'}</span>
               </div>
               <span className="text-[11px] text-slate-400 font-mono">{starredCount}</span>
             </button>
 
             <button
               onClick={() => onTabChange('shared')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === 'shared' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'shared'
+                  ? 'bg-blue-500/15 text-blue-300 font-bold border border-blue-500/30 shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
             >
               <div className="flex items-center gap-2.5">
                 <Share2 className="w-4 h-4 text-blue-400" />
-                <span>{lang === 'bn' ? 'শেয়ার করা ফাইল' : 'Shared Files'}</span>
+                <span>{lang === 'bn' ? 'শেয়ার করা ফাইল' : 'Shared Links'}</span>
               </div>
               <span className="text-[11px] text-slate-400 font-mono">{sharedCount}</span>
             </button>
 
             <button
               onClick={() => onTabChange('vault')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === 'vault' ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'vault'
+                  ? 'bg-purple-500/15 text-purple-300 font-bold border border-purple-500/30 shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
             >
               <div className="flex items-center gap-2.5">
-                <Lock className="w-4 h-4 text-emerald-400" />
-                <span>{lang === 'bn' ? 'এনক্রিপ্ট ভল্ট' : 'Encrypted Vault'}</span>
+                <Lock className="w-4 h-4 text-purple-400" />
+                <span>{lang === 'bn' ? 'সুরক্ষিত ভল্ট' : 'Secure Vault'}</span>
               </div>
               <span className="text-[11px] text-slate-400 font-mono">{vaultCount}</span>
             </button>
 
             <button
               onClick={() => onTabChange('trash')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === 'trash' ? 'bg-red-500/15 text-red-300 border border-red-500/30' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'}`}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition cursor-pointer ${
+                activeTab === 'trash'
+                  ? 'bg-red-500/15 text-red-300 font-bold border border-red-500/30 shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+              }`}
             >
               <div className="flex items-center gap-2.5">
                 <Trash2 className="w-4 h-4 text-red-400" />
@@ -125,32 +182,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </nav>
 
-          {/* Special Tools & Utilities */}
-          <div className="mt-5 pt-4 border-t border-slate-800/60 space-y-1">
-            <h4 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              {lang === 'bn' ? 'ইউটিলিটি টুলস' : 'Utility Tools'}
+          {/* ইউটিলিটি টুলস (Utility Tools) - সমস্ত টুলস এখানে থাকবে */}
+          <div className="mt-5 pt-4 border-t border-slate-800/70 space-y-1.5">
+            <h4 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>{lang === 'bn' ? 'ইউটিলিটি টুলস' : 'Utility Tools'}</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/50">
+                7 Tools
+              </span>
             </h4>
 
-            {onOpenCalculator && (
+            {/* 1. অ্যানালিটিক্স (Analytics) */}
+            {onOpenAnalytics && (
               <button
-                onClick={onOpenCalculator}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+                onClick={onOpenAnalytics}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'স্টোরেজ অ্যানালিটিক্স ও রিপোর্ট' : 'Storage Analytics & Report'}
               >
                 <div className="flex items-center gap-2.5">
-                  <Calculator className="w-4 h-4 text-emerald-400" />
-                  <span>{lang === 'bn' ? 'ক্যালকুলেটর ও স্টোরেজ' : 'Calculator'}</span>
+                  <BarChart3 className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics'}</span>
                 </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  {lang === 'bn' ? 'রিপোর্ট' : 'Stats'}
+                </span>
               </button>
             )}
 
+            {/* 2. ক্যালকুলেটর (Calculator) */}
+            {onOpenCalculator && (
+              <button
+                onClick={onOpenCalculator}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'ক্যালকুলেটর ও ১০০০ জিবি স্টোরেজ হিসাব' : 'Calculator & Storage Limits'}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Calculator className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'ক্যালকুলেটর' : 'Calculator'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {lang === 'bn' ? 'হিসাব' : 'Calc'}
+                </span>
+              </button>
+            )}
+
+            {/* 3. স্ক্রিন রেকর্ড (Screen Recorder) */}
             {onOpenScreenRecorder && (
               <button
                 onClick={onOpenScreenRecorder}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'স্ক্রিন রেকর্ডার (মাইক্রোফোন ও ডিভাইস অডিও)' : 'Screen Recorder'}
               >
                 <div className="flex items-center gap-2.5">
-                  <Video className="w-4 h-4 text-rose-400" />
-                  <span>{lang === 'bn' ? 'স্ক্রিন রেকর্ডার' : 'Screen Recorder'}</span>
+                  <Video className="w-4 h-4 text-rose-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'স্ক্রিন রেকর্ড' : 'Screen Record'}</span>
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
                   {lang === 'bn' ? 'ভিডিও' : 'Video'}
@@ -158,14 +242,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
 
+            {/* 4. ভয়েস রেকর্ড (Voice Recorder) */}
             {onOpenVoiceRecorder && (
               <button
                 onClick={onOpenVoiceRecorder}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'ভয়েস রেকর্ডার (ক্লিয়ার মাইক্রোফোন অডিও)' : 'Voice Recorder'}
               >
                 <div className="flex items-center gap-2.5">
-                  <Mic className="w-4 h-4 text-indigo-400" />
-                  <span>{lang === 'bn' ? 'ভয়েস রেকর্ডার' : 'Voice Recorder'}</span>
+                  <Mic className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'ভয়েস রেকর্ড' : 'Voice Record'}</span>
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   {lang === 'bn' ? 'অডিও' : 'Audio'}
@@ -173,41 +259,88 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
 
-            {onOpenChat && (
+            {/* 5. ৩০ দিন বাকি ১০০৳ আজীবন (Trial countdown / 100 Tk Lifetime Subscription) */}
+            {onOpenSubscription && (
               <button
-                onClick={onOpenChat}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 hover:bg-cyan-950/40 hover:text-white transition cursor-pointer"
+                onClick={onOpenSubscription}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer shadow-sm ${
+                  trial.isLifetime
+                    ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40'
+                    : trial.isExpired
+                    ? 'bg-red-950/80 text-red-300 hover:bg-red-900 border border-red-700 animate-pulse'
+                    : 'bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-yellow-500/15 text-amber-200 hover:bg-amber-500/25 border border-amber-500/40'
+                }`}
+                title={
+                  trial.isLifetime 
+                    ? (lang === 'bn' ? 'আজীবন মেম্বারশিপ আনলকড (VIP)' : 'Lifetime Membership Unlocked')
+                    : trial.isExpired
+                    ? (lang === 'bn' ? 'মেয়াদ শেষ! ১০০ টাকা বিকাশ বা নগদে সেন্ড মানি করুন' : 'Trial Expired! Send 100 Tk')
+                    : (lang === 'bn' ? `৩০ দিন ট্রায়ালের ${toBengaliDigits(trial.remainingDays)} দিন বাকি। ১০০ টাকা দিয়ে আজীবন আনলক করুন` : `${trial.remainingDays} days remaining`)
+                }
               >
-                <div className="flex items-center gap-2.5">
-                  <Bot className="w-4 h-4 text-cyan-400" />
-                  <span>{lang === 'bn' ? 'Gemini এআই চ্যাট' : 'Gemini AI Chat'}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  {trial.isLifetime ? (
+                    <Crown className="w-4 h-4 text-amber-400 fill-amber-400/20 shrink-0" />
+                  ) : trial.isExpired ? (
+                    <Lock className="w-4 h-4 text-red-400 shrink-0" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {trial.isLifetime
+                      ? (lang === 'bn' ? 'আজীবন আনলকড' : 'Lifetime VIP')
+                      : trial.isExpired
+                      ? (lang === 'bn' ? 'মেয়াদ শেষ • ১০০৳' : 'Expired • 100 Tk')
+                      : (lang === 'bn' ? `${toBengaliDigits(trial.remainingDays)} দিন বাকি` : `${trial.remainingDays}d left`)}
+                  </span>
                 </div>
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  AI
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                  trial.isLifetime ? 'bg-amber-500/30 text-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {trial.isLifetime ? 'VIP' : (lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk')}
                 </span>
               </button>
             )}
 
-            {onOpenSubscription && (
+            {/* 6. AI চ্যাট (Gemini Chat) */}
+            {onOpenChat && (
               <button
-                onClick={onOpenSubscription}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition cursor-pointer shadow-sm"
+                onClick={onOpenChat}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 hover:bg-cyan-950/40 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'Gemini এআই চ্যাট ও সহকারী' : 'Gemini AI Assistant'}
               >
                 <div className="flex items-center gap-2.5">
-                  <Crown className="w-4 h-4 text-amber-400" />
-                  <span>{lang === 'bn' ? '১০০৳ আজীবন আনলক' : '100 Tk Lifetime'}</span>
+                  <Bot className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'AI চ্যাট' : 'AI Chat'}</span>
                 </div>
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                  VIP
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  Gemini
                 </span>
               </button>
             )}
+
+            {/* 7. Gojol Studio (গজল স্টুডিও) */}
+            <a
+              href="http://www.youtube.com/@BasharGojolStudio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-red-300 hover:bg-red-950/40 hover:text-white transition cursor-pointer group"
+              title={lang === 'bn' ? '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন।' : 'Subscribe to Bashar Gojol Studio'}
+            >
+              <div className="flex items-center gap-2.5">
+                <Youtube className="w-4 h-4 text-red-500 group-hover:scale-110 transition" />
+                <span>Gojol Studio</span>
+              </div>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30">
+                YouTube
+              </span>
+            </a>
           </div>
         </div>
       </div>
 
       {/* Storage Gauge */}
-      <div className="pt-6 border-t border-slate-800/80 space-y-4">
+      <div className="pt-5 border-t border-slate-800/80 space-y-3">
         {/* 1000GB Storage Gauge */}
         <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-lg">
           <div className="flex items-center justify-between">
@@ -233,18 +366,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>{formatStorage(stats.usedBytes)} {lang === 'bn' ? 'ব্যবহৃত' : 'used'}</span>
             <span className="text-slate-500">{Math.max(0, totalGb - usedGb).toFixed(1)} GB {lang === 'bn' ? 'বাকি' : 'free'}</span>
           </div>
-
-          {onOpenAnalytics && (
-            <button
-              onClick={onOpenAnalytics}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-500/15 to-blue-500/15 hover:from-cyan-500/25 hover:to-blue-500/25 border border-cyan-500/30 text-cyan-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950/40"
-            >
-              <BarChart3 className="w-4 h-4 text-cyan-400" />
-              <span>{lang === 'bn' ? 'অ্যানালিটিক্স ড্যাশবোর্ড' : 'Analytics Dashboard'}</span>
-            </button>
-          )}
         </div>
       </div>
     </aside>
+    </>
   );
 };

@@ -235,6 +235,7 @@ export default function App() {
   const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -1581,12 +1582,6 @@ export default function App() {
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={handleOpenUpload}
-        onOpenAnalytics={() => setIsAnalyticsOpen(true)}
-        onOpenChat={() => setIsChatOpen(true)}
-        onOpenCalculator={() => setIsCalculatorOpen(true)}
-        onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
-        onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
-        onOpenSubscription={() => setIsSubscriptionOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -1595,6 +1590,7 @@ export default function App() {
         onOpenAdmin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
         onSyncFiles={() => currentUser && syncUserFiles(currentUser.id, true)}
         isSyncingFiles={isSyncingFiles}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(prev => !prev)}
       />
 
       {/* YouTube Gojol Studio Banner */}
@@ -1602,23 +1598,26 @@ export default function App() {
 
       {/* Body Layout: Sidebar + Main File Manager */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* Sidebar with all 7 Utility Tools */}
         <Sidebar
           activeTab={activeTab}
           onTabChange={setActiveTab}
           stats={stats}
           siteSettings={siteSettings}
+          currentUser={currentUser}
           trashCount={trashCount}
           starredCount={starredCount}
           sharedCount={sharedCount}
           vaultCount={vaultCount}
           lang={lang}
-          onOpenAnalytics={() => setIsAnalyticsOpen(true)}
-          onOpenCalculator={() => setIsCalculatorOpen(true)}
-          onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
-          onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
-          onOpenSubscription={() => setIsSubscriptionOpen(true)}
-          onOpenChat={() => setIsChatOpen(true)}
+          isMobileOpen={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
+          onOpenAnalytics={() => { setIsAnalyticsOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenCalculator={() => { setIsCalculatorOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenScreenRecorder={() => { setIsScreenRecorderOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenVoiceRecorder={() => { setIsVoiceRecorderOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenSubscription={() => { setIsSubscriptionOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenChat={() => { setIsChatOpen(true); setIsMobileMenuOpen(false); }}
         />
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}

@@ -4,119 +4,98 @@ import {
   Cloud, 
   Search, 
   Upload, 
-  Files, 
   ShieldCheck, 
   Languages, 
   User, 
   LogOut, 
-  Lock, 
-  KeyRound, 
-  Sparkles, 
-  RefreshCw, 
-  Youtube, 
-  BarChart3, 
-  Bot, 
-  Calculator, 
-  Video,
-  Mic,
-  Crown,
-  Clock
+  RefreshCw,
+  Menu
 } from 'lucide-react';
-import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
+  siteSettings?: SiteSettings;
   onOpenAuth: () => void;
   onLogout: () => void;
   onOpenProfile: () => void;
   onOpenUpload: () => void;
-  onOpenAnalytics?: () => void;
-  onOpenChat?: () => void;
-  onOpenCalculator?: () => void;
-  onOpenScreenRecorder?: () => void;
-  onOpenVoiceRecorder?: () => void;
-  onOpenSubscription?: () => void;
   searchQuery: string;
-  onSearchChange: (q: string) => void;
+  onSearchChange: (query: string) => void;
   stats: StorageStats;
-  siteSettings?: SiteSettings;
   lang: 'bn' | 'en';
   onToggleLang: () => void;
   onOpenAdmin?: () => void;
   onSyncFiles?: () => void;
   isSyncingFiles?: boolean;
+  onToggleMobileMenu?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
+  siteSettings,
   onOpenAuth,
   onLogout,
   onOpenProfile,
   onOpenUpload,
-  onOpenAnalytics,
-  onOpenChat,
-  onOpenCalculator,
-  onOpenScreenRecorder,
-  onOpenVoiceRecorder,
-  onOpenSubscription,
   searchQuery,
   onSearchChange,
   stats,
-  siteSettings,
   lang,
   onToggleLang,
   onOpenAdmin,
   onSyncFiles,
-  isSyncingFiles = false
+  isSyncingFiles = false,
+  onToggleMobileMenu
 }) => {
-  const trial = getTrialStatus(currentUser);
   const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 MB';
-    const mb = bytes / (1024 * 1024);
-    if (mb < 1024) return mb.toFixed(1) + ' MB';
-    return (mb / 1024).toFixed(2) + ' GB';
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb < 1) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    return gb.toFixed(1) + ' GB';
   };
 
+  const siteName = siteSettings?.siteName || 'Bashar';
+  const siteBadge = siteSettings?.siteBadge || '1000GB';
+
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/85 backdrop-blur-md border-b border-slate-800 px-4 lg:px-6 py-3">
-      <div className="flex items-center justify-between gap-3">
-        {/* Brand / Logo */}
+    <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-2.5">
+      <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
+        {/* Brand & Logo */}
         <div className="flex items-center gap-3 shrink-0">
+          {onToggleMobileMenu && (
+            <button
+              onClick={onToggleMobileMenu}
+              className="p-2 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 md:hidden cursor-pointer"
+              title={lang === 'bn' ? 'মেনু ও ইউটিলিটি টুলস' : 'Menu & Tools'}
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          )}
           {siteSettings?.siteLogoUrl ? (
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-cyan-400/50 shadow-lg shadow-cyan-500/20 bg-slate-950">
-              <img
-                src={siteSettings.siteLogoUrl}
-                alt={siteSettings.siteName}
+            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-cyan-400/80 shadow-md shadow-cyan-500/20 bg-slate-950 flex items-center justify-center shrink-0">
+              <img 
+                src={siteSettings.siteLogoUrl} 
+                alt={siteName} 
                 className="w-full h-full object-cover"
               />
-              <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
-              </span>
             </div>
           ) : (
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20">
-              <Cloud className="w-6 h-6 stroke-[2.5]" />
-              <span className="absolute -bottom-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
-              </span>
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 flex items-center justify-center text-slate-950 shadow-md shadow-cyan-500/20 shrink-0">
+              <Cloud className="w-5 h-5 stroke-[2.5]" />
             </div>
           )}
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center gap-1.5">
-              <span className="text-lg font-black tracking-tight text-white">
-                {siteSettings?.siteName || 'Bashar'}
-              </span>
-              <span className="px-1.5 py-0.5 text-[11px] font-black tracking-wide rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 uppercase shadow-sm">
-                {siteSettings?.siteBadge || '1000GB'}
-              </span>
-              <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 text-[10px] border border-emerald-800/40 font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live
+              <h1 className="text-base font-black tracking-tight text-white">
+                {siteName}
+              </h1>
+              <span className="px-1.5 py-0.5 rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 text-[10px] font-black uppercase tracking-wider">
+                {siteBadge}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              {lang === 'bn' ? (siteSettings?.taglineBn || '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট • অনলাইন ডাটাবেস') : (siteSettings?.taglineEn || '1 TB Cloud Vault • Firestore Connected')}
+            <p className="text-[10px] text-slate-400 -mt-0.5 font-medium">
+              {lang === 'bn' 
+                ? (siteSettings?.taglineBn || '১০০০ জিবি সুপারফাস্ট ক্লাউড স্টোরেজ') 
+                : (siteSettings?.taglineEn || '1000 GB Superfast Cloud Storage')}
             </p>
           </div>
         </div>
@@ -143,9 +122,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Action Controls & User */}
+        {/* Action Controls & User:
+            Only Upload, Admin, Sync, EN, Profile (As requested by user:
+            "ফাইল সার্চ করে খুঁজে পাওয়ার ডানে অ্যানালিটিক্স, ক্যালকুলেটর স্ক্রিন রেকর্ড, ভয়েস রেকর্ড, ৩০ দিন বাকি ১০০৳ আজীবন, AI চ্যাট, Gojol Studio
+            এগুলো উপরে থাকবে না থাকবে শুধু বাম দিকের ইউটিলিটি টুলস এ থাকবে 
+            অ্যাডমিন থাকবে এবং সিঙ্ক, EN, প্রোফাইল থাকবে")
+        */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Upload Button */}
+          {/* 1. Upload Button */}
           <button
             onClick={onOpenUpload}
             className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs sm:text-sm font-bold shadow-lg shadow-cyan-500/20 transition cursor-pointer"
@@ -156,112 +140,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </button>
 
-          {/* Analytics Dashboard Button */}
-          {onOpenAnalytics && (
-            <button
-              onClick={onOpenAnalytics}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950"
-              title={lang === 'bn' ? 'স্টোরেজ অ্যানালিটিক্স ও গ্রোথ ট্রেন্ড' : 'Storage Analytics Dashboard'}
-            >
-              <BarChart3 className="w-4 h-4 text-cyan-400" />
-              <span className="hidden md:inline">{lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics'}</span>
-            </button>
-          )}
-
-          {/* Calculator Button */}
-          {onOpenCalculator && (
-            <button
-              onClick={onOpenCalculator}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition cursor-pointer shadow-sm shadow-emerald-950"
-              title={lang === 'bn' ? 'ক্যালকুলেটর ও ১০০০ জিবি স্টোরেজ হিসাব' : 'Calculator & Storage Calculator'}
-            >
-              <Calculator className="w-4 h-4 text-emerald-400" />
-              <span className="hidden md:inline">{lang === 'bn' ? 'ক্যালকুলেটর' : 'Calc'}</span>
-            </button>
-          )}
-
-          {/* Screen Recorder Button */}
-          {onOpenScreenRecorder && (
-            <button
-              onClick={onOpenScreenRecorder}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-rose-950"
-              title={lang === 'bn' ? 'স্ক্রিন রেকর্ডার (মাইক্রোফোন ও ডিভাইস অডিও সহ)' : 'Screen Recorder (with Mic & Device Audio)'}
-            >
-              <Video className="w-4 h-4 text-rose-400" />
-              <span className="hidden md:inline">{lang === 'bn' ? 'স্ক্রিন রেকর্ড' : 'Record'}</span>
-            </button>
-          )}
-
-          {/* Voice Recorder Button */}
-          {onOpenVoiceRecorder && (
-            <button
-              onClick={onOpenVoiceRecorder}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-indigo-950"
-              title={lang === 'bn' ? 'ভয়েস রেকর্ডার (ক্লিয়ার মাইক্রোফোন অডিও)' : 'Voice Recorder (Clear Mic Audio)'}
-            >
-              <Mic className="w-4 h-4 text-indigo-400" />
-              <span className="hidden md:inline">{lang === 'bn' ? 'ভয়েস রেকর্ড' : 'Voice'}</span>
-            </button>
-          )}
-
-          {/* 30-Day Trial Countdown / Lifetime Unlock Badge */}
-          {currentUser && onOpenSubscription && (
-            <button
-              onClick={onOpenSubscription}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-sm ${
-                trial.isLifetime
-                  ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
-                  : trial.isExpired
-                  ? 'bg-red-950/80 border border-red-700 text-red-300 hover:bg-red-900 animate-pulse'
-                  : 'bg-gradient-to-r from-cyan-950 to-indigo-950 border border-cyan-500/40 text-cyan-200 hover:border-cyan-400'
-              }`}
-              title={
-                trial.isLifetime 
-                  ? (lang === 'bn' ? 'আজীবন আনলকড (লাইফটাইম মেম্বার)' : 'Lifetime Unlocked') 
-                  : trial.isExpired
-                  ? (lang === 'bn' ? '১ মাস মেয়াদ শেষ! ১০০ টাকা দিয়ে আনলক করুন' : 'Trial Expired! Pay 100 Tk to unlock')
-                  : (lang === 'bn' ? `৩০ দিন ট্রায়ালের ${toBengaliDigits(trial.remainingDays)} দিন বাকি। এখনই ১০০ টাকা দিয়ে আজীবন আনলক করতে ক্লিক করুন` : `${trial.remainingDays} days remaining`)
-              }
-            >
-              {trial.isLifetime ? (
-                <>
-                  <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                  <span className="hidden sm:inline">{lang === 'bn' ? 'লাইফটাইম' : 'Lifetime'}</span>
-                </>
-              ) : trial.isExpired ? (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-red-400" />
-                  <span>{lang === 'bn' ? 'মেয়াদ শেষ • ১০০৳' : 'Expired • 100 Tk'}</span>
-                </>
-              ) : (
-                <>
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{lang === 'bn' ? `${toBengaliDigits(trial.remainingDays)} দিন বাকি` : `${trial.remainingDays}d left`}</span>
-                  <span className="hidden xl:inline text-[10px] text-amber-300 bg-amber-500/20 px-1 py-0.5 rounded border border-amber-500/30">
-                    {lang === 'bn' ? '১০০৳ আজীবন' : '100 Tk'}
-                  </span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Gemini AI Chatbot Button */}
-          {onOpenChat && (
-            <button
-              onClick={onOpenChat}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 hover:text-white border border-cyan-400/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-cyan-950"
-              title={lang === 'bn' ? 'Gemini এআই অ্যাসিস্ট্যান্ট (চ্যাট করুন)' : 'Gemini AI Assistant'}
-            >
-              <Bot className="w-4 h-4 text-cyan-400" />
-              <span className="hidden md:inline">{lang === 'bn' ? 'AI চ্যাট' : 'AI Chat'}</span>
-            </button>
-          )}
-
-          {/* Admin Panel Button */}
+          {/* 2. Admin Panel Button (অ্যাডমিন) */}
           {onOpenAdmin && (
             <button
               onClick={onOpenAdmin}
-              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 border border-rose-800/80 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 border border-rose-800/80 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-sm"
               title={lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
             >
               <ShieldCheck className="w-4 h-4 text-rose-400" />
@@ -269,25 +152,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* YouTube Channel Button */}
-          <a
-            href="http://www.youtube.com/@BasharGojolStudio"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-white text-xs font-semibold border border-red-500/40 transition cursor-pointer shadow-sm"
-            title={lang === 'bn' ? '❤️ কষ্ট করে আমাদের চ্যানেলটি সাবস্ক্রাইব করে সহযোগিতা করুন। 🌸' : 'Subscribe to Bashar Gojol Studio'}
-          >
-            <Youtube className="w-3.5 h-3.5 text-red-500" />
-            <span className="hidden md:inline">Gojol Studio</span>
-          </a>
-
-          {/* Cloud Sync Button */}
+          {/* 3. Cloud Sync Button (সিঙ্ক) */}
           {currentUser && onSyncFiles && (
             <button
               onClick={onSyncFiles}
               disabled={isSyncingFiles}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer ${isSyncingFiles ? 'border-cyan-400 ring-1 ring-cyan-400/50' : ''}`}
-              title={lang === 'bn' ? 'ক্লাউড সিঙ্ক (সব ব্রাউজার ও ডিভাইসের ফাইল সিঙ্ক করুন)' : 'Sync files with Cloud'}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer ${isSyncingFiles ? 'border-cyan-400 ring-1 ring-cyan-400/50' : ''}`}
+              title={lang === 'bn' ? 'ক্লাউড সিঙ্ক (সব ডিভাইসের ফাইল সিঙ্ক করুন)' : 'Sync files with Cloud'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFiles ? 'animate-spin text-cyan-300' : 'text-cyan-400'}`} />
               <span className="hidden sm:inline">
@@ -296,23 +167,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Language Switcher */}
+          {/* 4. Language Switcher (EN) */}
           <button
             onClick={onToggleLang}
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
+            className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer"
             title="Toggle Language"
           >
             <Languages className="w-4 h-4 text-cyan-400" />
-            <span className="uppercase text-[11px]">{lang === 'bn' ? 'EN' : 'বাং'}</span>
+            <span className="uppercase text-[11px] font-bold">{lang === 'bn' ? 'EN' : 'বাং'}</span>
           </button>
 
-          {/* User Account / Profile */}
+          {/* 5. User Account / Profile (প্রোফাইল) */}
           {currentUser ? (
             <div className="flex items-center gap-2 pl-1 border-l border-slate-800">
               <button
                 onClick={onOpenProfile}
                 className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 text-left transition cursor-pointer"
-                title={lang === 'bn' ? 'প্রোফাইল সেটিংস (লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড পরিবর্তন)' : 'Profile Settings (Logo, Name, Date of Birth & Password)'}
+                title={lang === 'bn' ? 'প্রোফাইল সেটিংস (লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড)' : 'Profile Settings'}
               >
                 {currentUser.customLogo ? (
                   <div className="w-8 h-8 rounded-lg overflow-hidden border border-cyan-400 shrink-0">
@@ -339,7 +210,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <button
                 onClick={onLogout}
-                className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition"
+                className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition cursor-pointer"
                 title={lang === 'bn' ? 'লগআউট' : 'Logout'}
               >
                 <LogOut className="w-4 h-4" />
