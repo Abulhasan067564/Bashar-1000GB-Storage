@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserAccount, StorageStats, SiteSettings } from '../types/storage';
-import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3, Bot } from 'lucide-react';
+import { Cloud, Search, Upload, Files, ShieldCheck, Languages, User, LogOut, Lock, KeyRound, Sparkles, RefreshCw, Youtube, BarChart3, Bot, Calculator, Video } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: UserAccount | null;
@@ -10,6 +10,8 @@ interface NavbarProps {
   onOpenUpload: () => void;
   onOpenAnalytics?: () => void;
   onOpenChat?: () => void;
+  onOpenCalculator?: () => void;
+  onOpenScreenRecorder?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   stats: StorageStats;
@@ -29,6 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUpload,
   onOpenAnalytics,
   onOpenChat,
+  onOpenCalculator,
+  onOpenScreenRecorder,
   searchQuery,
   onSearchChange,
   stats,
@@ -134,6 +138,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <BarChart3 className="w-4 h-4 text-cyan-400" />
               <span className="hidden md:inline">{lang === 'bn' ? 'অ্যানালিটিক্স' : 'Analytics'}</span>
+            </button>
+          )}
+
+          {/* Calculator Button */}
+          {onOpenCalculator && (
+            <button
+              onClick={onOpenCalculator}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition cursor-pointer shadow-sm shadow-emerald-950"
+              title={lang === 'bn' ? 'ক্যালকুলেটর ও ১০০০ জিবি স্টোরেজ হিসাব' : 'Calculator & Storage Calculator'}
+            >
+              <Calculator className="w-4 h-4 text-emerald-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'ক্যালকুলেটর' : 'Calc'}</span>
+            </button>
+          )}
+
+          {/* Screen Recorder Button */}
+          {onOpenScreenRecorder && (
+            <button
+              onClick={onOpenScreenRecorder}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold transition cursor-pointer shadow-sm shadow-rose-950"
+              title={lang === 'bn' ? 'স্ক্রিন রেকর্ডার (মাইক্রোফোন ও ডিভাইস অডিও সহ)' : 'Screen Recorder (with Mic & Device Audio)'}
+            >
+              <Video className="w-4 h-4 text-rose-400" />
+              <span className="hidden md:inline">{lang === 'bn' ? 'স্ক্রিন রেকর্ড' : 'Record'}</span>
             </button>
           )}
 

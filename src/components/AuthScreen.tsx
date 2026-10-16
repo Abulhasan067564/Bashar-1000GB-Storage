@@ -29,7 +29,8 @@ import {
   Camera,
   Trash2,
   ShieldCheck,
-  Bot
+  Bot,
+  Calculator
 } from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
 
@@ -42,6 +43,7 @@ interface AuthScreenProps {
   onToggleLang: () => void;
   onOpenAdminLogin?: () => void;
   onOpenChat?: () => void;
+  onOpenCalculator?: () => void;
 }
 
 const PRESET_LOGOS = [
@@ -59,7 +61,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   lang,
   onToggleLang,
   onOpenAdminLogin,
-  onOpenChat
+  onOpenChat,
+  onOpenCalculator
 }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [emailOrPhone, setEmailOrPhone] = useState('');
@@ -344,6 +347,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenCalculator && (
+            <button
+              onClick={onOpenCalculator}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition cursor-pointer shadow-sm shadow-emerald-950"
+              title={lang === 'bn' ? 'ক্যালকুলেটর ও ১০০০ জিবি স্টোরেজ হিসাব' : 'Calculator & Storage Math'}
+            >
+              <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{lang === 'bn' ? 'ক্যালকুলেটর' : 'Calc'}</span>
+            </button>
+          )}
+
           {onOpenChat && (
             <button
               onClick={onOpenChat}

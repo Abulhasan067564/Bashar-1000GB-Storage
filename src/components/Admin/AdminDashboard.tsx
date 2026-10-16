@@ -53,6 +53,7 @@ interface AdminDashboardProps {
   onUpdateUsersList: (users: UserAccount[]) => void;
   onUpdateAdminCredentials: (creds: AdminCredentials) => void;
   onDeleteUser: (userId: string) => Promise<void>;
+  onDeleteAllUsers?: () => Promise<void>;
   onLogoutAdmin: () => void;
   onBackToApp: () => void;
   onRefreshData?: () => Promise<void>;
@@ -67,6 +68,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateUsersList,
   onUpdateAdminCredentials,
   onDeleteUser,
+  onDeleteAllUsers,
   onLogoutAdmin,
   onBackToApp,
   onRefreshData,
@@ -680,8 +682,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </p>
             </div>
 
-            {/* Export CSV button */}
-            <div className="flex items-center gap-2">
+            {/* Export CSV & Delete All Users buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={handleExportUsers}
                 className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
@@ -690,6 +692,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Download className="w-3.5 h-3.5 text-cyan-400" />
                 <span>{lang === 'bn' ? 'এক্সপোর্ট CSV' : 'Export CSV'}</span>
               </button>
+
+              {usersList.length > 0 && onDeleteAllUsers && (
+                <button
+                  onClick={() => {
+                    if (confirm(lang === 'bn' ? '⚠️ আপনি কি নিশ্চিত যে সমস্ত নিবন্ধিত ইউজার এবং জিমেইল অ্যাকাউন্ট মুছে ফেলতে চান? সবাই নতুন করে সাইন আপ করতে পারবে।' : '⚠️ Are you sure you want to delete ALL registered users? Everyone will sign up freshly.')) {
+                      onDeleteAllUsers();
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800 text-xs font-semibold text-rose-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
+                  title="Delete all registered users"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>{lang === 'bn' ? 'সব ইউজার ডিলিট করুন' : 'Delete All Users'}</span>
+                </button>
+              )}
             </div>
           </div>
 

@@ -7,7 +7,10 @@ import {
   Lock, 
   Trash2, 
   HardDrive,
-  BarChart3
+  BarChart3,
+  Calculator,
+  Video,
+  Bot
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -21,6 +24,9 @@ interface SidebarProps {
   vaultCount: number;
   lang: 'bn' | 'en';
   onOpenAnalytics?: () => void;
+  onOpenCalculator?: () => void;
+  onOpenScreenRecorder?: () => void;
+  onOpenChat?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -33,7 +39,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   sharedCount,
   vaultCount,
   lang,
-  onOpenAnalytics
+  onOpenAnalytics,
+  onOpenCalculator,
+  onOpenScreenRecorder,
+  onOpenChat
 }) => {
   const formatStorage = (bytes: number) => {
     const mb = bytes / (1024 * 1024);
@@ -109,6 +118,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-[11px] text-slate-400 font-mono">{trashCount}</span>
             </button>
           </nav>
+
+          {/* Special Tools & Utilities */}
+          <div className="mt-5 pt-4 border-t border-slate-800/60 space-y-1">
+            <h4 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+              {lang === 'bn' ? 'ইউটিলিটি টুলস' : 'Utility Tools'}
+            </h4>
+
+            {onOpenCalculator && (
+              <button
+                onClick={onOpenCalculator}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Calculator className="w-4 h-4 text-emerald-400" />
+                  <span>{lang === 'bn' ? 'ক্যালকুলেটর ও স্টোরেজ' : 'Calculator'}</span>
+                </div>
+              </button>
+            )}
+
+            {onOpenScreenRecorder && (
+              <button
+                onClick={onOpenScreenRecorder}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Video className="w-4 h-4 text-rose-400" />
+                  <span>{lang === 'bn' ? 'স্ক্রিন রেকর্ডার' : 'Screen Recorder'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  {lang === 'bn' ? 'নতুন' : 'New'}
+                </span>
+              </button>
+            )}
+
+            {onOpenChat && (
+              <button
+                onClick={onOpenChat}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 hover:bg-cyan-950/40 hover:text-white transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bot className="w-4 h-4 text-cyan-400" />
+                  <span>{lang === 'bn' ? 'Gemini এআই চ্যাট' : 'Gemini AI Chat'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  AI
+                </span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

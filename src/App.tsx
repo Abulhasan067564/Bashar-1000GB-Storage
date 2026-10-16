@@ -61,6 +61,8 @@ import { CreateFileModal } from './components/Modals/CreateFileModal';
 import { CreateFolderModal } from './components/Modals/CreateFolderModal';
 import { MoveCopyModal } from './components/Modals/MoveCopyModal';
 import { AnalyticsModal } from './components/Modals/AnalyticsModal';
+import { CalculatorModal } from './components/Modals/CalculatorModal';
+import { ScreenRecorderModal } from './components/Modals/ScreenRecorderModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
 import { 
   Cloud, 
@@ -221,6 +223,8 @@ export default function App() {
   const [shareFile, setShareFile] = useState<StorageFile | null>(null);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -259,6 +263,13 @@ export default function App() {
             localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(merged));
             return merged;
           });
+        } else {
+          // Cloud has 0 users (all accounts wiped fresh as requested)
+          setUsersList([]);
+          localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify([]));
+          localStorage.removeItem(STORAGE_SESSION_KEY);
+          sessionStorage.removeItem(STORAGE_SESSION_KEY);
+          setCurrentUser(null);
         }
 
         // Sync site settings / branding from Firestore
@@ -351,6 +362,36 @@ export default function App() {
       setSelectedFileIds(new Set());
       setIsProfileOpen(false);
     }
+  };
+
+  // Delete ALL users by Admin (as requested: "সব জিমেইল ডিলিট করে দিন। নতুন করে সবাই সাইন আপ করবে")
+  const handleDeleteAllUsersByAdmin = async () => {
+    try {
+      const allFiles = await getAllStoredFiles();
+      const userFileIds = allFiles.filter(f => f.ownerId && f.ownerId !== 'default').map(f => f.id);
+      if (userFileIds.length > 0) {
+        await deleteMultipleStoredFiles(userFileIds);
+        userFileIds.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
+      }
+    } catch {}
+
+    for (const u of usersList) {
+      recordDeletedUserId(u.id);
+      deleteUserFromFirestore(u.id).catch(() => {});
+    }
+
+    setUsersList([]);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify([]));
+    localStorage.removeItem(STORAGE_SESSION_KEY);
+    sessionStorage.removeItem(STORAGE_SESSION_KEY);
+    setCurrentUser(null);
+    setFiles([]);
+    setSelectedFileIds(new Set());
+    showToast(
+      lang === 'bn' 
+        ? 'সকল ইউজার এবং জিমেইল সফলভাবে মুছে ফেলা হয়েছে! নতুন করে সবাই সাইন আপ করতে পারবে।' 
+        : 'All users deleted! Everyone can sign up freshly.'
+    );
   };
 
   // Refresh admin data
@@ -1287,6 +1328,7 @@ export default function App() {
         onUpdateUsersList={handleUpdateUsersList}
         onUpdateAdminCredentials={handleUpdateAdminCredentials}
         onDeleteUser={handleDeleteUserByAdmin}
+        onDeleteAllUsers={handleDeleteAllUsersByAdmin}
         onLogoutAdmin={handleAdminLogout}
         onBackToApp={() => setAdminView('none')}
         onRefreshData={handleRefreshAdminData}
@@ -1347,6 +1389,14 @@ export default function App() {
           onToggleLang={() => setLang(prev => prev === 'bn' ? 'en' : 'bn')}
           onOpenAdminLogin={() => setAdminView(currentAdmin ? 'dashboard' : 'login')}
           onOpenChat={() => setIsChatOpen(true)}
+          onOpenCalculator={() => setIsCalculatorOpen(true)}
+        />
+
+        {/* Calculator Modal available on landing screen */}
+        <CalculatorModal
+          isOpen={isCalculatorOpen}
+          onClose={() => setIsCalculatorOpen(false)}
+          lang={lang}
         />
 
         {/* Gemini AI Multi-turn Chatbot available on landing screen */}
@@ -1416,6 +1466,8 @@ export default function App() {
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenAnalytics={() => setIsAnalyticsOpen(true)}
         onOpenChat={() => setIsChatOpen(true)}
+        onOpenCalculator={() => setIsCalculatorOpen(true)}
+        onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -1443,6 +1495,9 @@ export default function App() {
           vaultCount={vaultCount}
           lang={lang}
           onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+          onOpenCalculator={() => setIsCalculatorOpen(true)}
+          onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
+          onOpenChat={() => setIsChatOpen(true)}
         />
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}
@@ -1772,6 +1827,22 @@ export default function App() {
         onClose={() => setIsAnalyticsOpen(false)}
         files={files}
         stats={stats}
+        lang={lang}
+      />
+
+      {/* Calculator Modal */}
+      <CalculatorModal
+        isOpen={isCalculatorOpen}
+        onClose={() => setIsCalculatorOpen(false)}
+        lang={lang}
+      />
+
+      {/* Screen Recorder Modal with Mic & Device Audio options */}
+      <ScreenRecorderModal
+        isOpen={isScreenRecorderOpen}
+        onClose={() => setIsScreenRecorderOpen(false)}
+        onSaveToDrive={handleCreateFile}
+        currentUser={currentUser}
         lang={lang}
       />
 
