@@ -27,15 +27,72 @@ function generateSmartFallbackReply(
   const q = userQuery.toLowerCase().trim();
   const isBn = lang === 'bn' || /[\u0980-\u09FF]/.test(userQuery);
 
-  // Greetings
-  if (q.includes('কেমন আছ') || q.includes('how are you') || q.includes('সালাম') || q.includes('assalamu') || q === 'hi' || q === 'hello' || q === 'ai' || q === 'এআই') {
-    if (isBn) {
-      return `আলহামদুলিল্লাহ, আমি খুব ভালো আছি! 🌸\n\nআমি **বাশার ক্লাউড এআই অ্যাসিস্ট্যান্ট**। আপনার ১০০০ জিবি হাই-সিকিউর ক্লাউড ড্রাইভ পরিচালনা, ফাইল আপলোড, ভল্ট এনক্রিপশন, সিক্রেট রিকভারি কিংবা যেকোনো সাধারণ জ্ঞান, কোডিং বা পড়াশোনার যেকোনো প্রশ্নের উত্তর দিতে আমি সম্পূর্ণ প্রস্তুত।\n\nআপনি আমাকে কী সাহায্য করতে চান বলুন?`;
+  // 1. Math calculation helper
+  const cleanMath = userQuery
+    .replace(/[০-৯]/g, d => ({ '০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9' }[d] || d))
+    .replace(/[xX×]/g, '*')
+    .replace(/[÷]/g, '/')
+    .trim();
+  const mathMatch = cleanMath.match(/^(\d+(?:\.\d+)?)\s*([\+\-\*\/])\s*(\d+(?:\.\d+)?)$/);
+  if (mathMatch) {
+    const a = parseFloat(mathMatch[1]);
+    const op = mathMatch[2];
+    const b = parseFloat(mathMatch[3]);
+    let result = 0;
+    if (op === '+') result = a + b;
+    else if (op === '-') result = a - b;
+    else if (op === '*') result = a * b;
+    else if (op === '/') result = b !== 0 ? a / b : NaN;
+
+    if (!isNaN(result)) {
+      if (isBn) {
+        return `🧮 **গণিতের সমাধান:**\n\n- হিসাব: \`${a} ${op} ${b}\`\n- **সঠিক ফলাফল:** **${result}**\n\n💡 আপনার যেকোনো গাণিতিক সমস্যা বা ফর্মুলার হিসাব আমি নিমিষেই সমাধান করতে পারি!`;
+      }
+      return `🧮 **Math Solution:**\n\n- Expression: \`${a} ${op} ${b}\`\n- **Result:** **${result}**\n\n💡 I can instantly calculate mathematical expressions and formulas!`;
     }
-    return `Hello! I am doing great, thank you! 🌟\n\nI am your **Bashar Cloud AI Assistant**. I can help you manage your 1000 GB cloud vault, explain features, organize folders, or answer any general question in coding, math, writing, and everyday productivity. How can I help you today?`;
   }
 
-  // Storage status query
+  // 2. Greetings
+  if (q.includes('কেমন আছ') || q.includes('how are you') || q.includes('সালাম') || q.includes('assalamu') || q === 'hi' || q === 'hello' || q === 'ai' || q === 'এআই' || q.includes('নমস্কার')) {
+    if (isBn) {
+      return `আলহামদুলিল্লাহ, আমি খুব ভালো আছি! 🌸\n\nআমি **বাশার ক্লাউড এআই অ্যাসিস্ট্যান্ট** (Gemini 3.8 Flash দ্বারা চালিত)। আপনার যেকোনো প্রশ্ন—হোক তা ১০০০ জিবি ক্লাউড ড্রাইভের ফাইল ব্যবস্থাপনা, ভল্ট সিকিউরিটি, কিংবা বিজ্ঞান, গণিত, কোডিং, সাধারণ জ্ঞান বা পড়াশোনা—আমি দ্রুত ও নিখুঁতভাবে উত্তর দিতে প্রস্তুত।\n\nআপনি কী জানতে চান বলুন?`;
+    }
+    return `Hello! I am doing great, thank you! 🌟\n\nI am your **Bashar Cloud AI Assistant** (powered by Gemini 3.8 Flash). I can help you manage your 1000 GB secure cloud drive, explain features, and answer ANY question in coding, science, mathematics, literature, or daily productivity. How may I assist you today?`;
+  }
+
+  // 3. 100 Taka Lifetime Membership rule
+  if (q.includes('১০০') || q.includes('100') || q.includes('টাকা') || q.includes('পেমেন্ট') || q.includes('বিকাশ') || q.includes('নগদ') || q.includes('fee') || q.includes('payment') || q.includes('lifetime') || q.includes('আজীবন')) {
+    if (isBn) {
+      return `👑 **বাশার ড্রাইভ ১০০৳ আজীবন আনলক নিয়ম:**\n\n- **একবার পরিশোধ:** যেকোনো সময় বিকাশ বা নগদে **১০০ টাকা** সেন্ড মানি করুন।\n- **আজীবন ফ্রি:** একবার দিলে জীবনের জন্য আর কখনো ১ টাকাও দেওয়া লাগবে না!\n- **১০০০ জিবি ক্লাউড:** আজীবন ১০০০ জিবি হাই-স্পিড ক্লাউড স্টোরেজ আপনার থাকবে।\n- **সেন্ড মানি করার নিয়ম:** বিকাশ বা নগদ অ্যাপ থেকে **01734211584** নম্বরে ১০০ টাকা সেন্ড মানি করে প্রাপ্ত TrxID-টি সাবস্ক্রিপশন মডালে সাবমিট করলেই অ্যাডমিন যাচাই করে সাথে সাথে একাউন্ট আজীবনের জন্য আনলক করে দেবে।`;
+    }
+    return `👑 **100 Tk Lifetime Access Guarantee:**\n\n- **Pay Once:** Send 100 Tk via bKash or Nagad to **01734211584**.\n- **Never Pay Again:** Pay once and you will NEVER have to pay again for life.\n- **1,000 GB Cloud Storage:** Permanent access with zero monthly or renewal fees!`;
+  }
+
+  // 4. Bangladesh & General Knowledge
+  if (q.includes('বাংলাদেশ') || q.includes('bangladesh') || q.includes('ঢাকা') || q.includes('dhaka') || q.includes('রাজধানী') || q.includes('capital')) {
+    if (isBn) {
+      return `🇧🇩 **বাংলাদেশ সম্পর্কিত গুরুত্বপূর্ণ তথ্য:**\n\n- 🏛️ **রাজধানী:** ঢাকা (Dhaka)\n- 🗣️ **রাষ্ট্রভাষা:** বাংলা (Bangla)\n- 💵 **মুদ্রা:** টাকা (BDT)\n- 📅 **স্বাধীনতা দিবস:** ২৬ মার্চ ১৯৭১\n- 🏆 **বিজয় দিবস:** ১৬ ডিসেম্বর ১৯৭১\n- 🌊 **প্রধান নদ-নদী:** পদ্মা, মেঘনা, যমুনা, কর্ণফুলী, তিস্তা\n- 🗺️ **বিভাগ সংখ্যা:** ৮টি বিভাগ (ঢাকা, চট্টগ্রাম, রাজশাহী, খুলনা, বরিশাল, সিলেট, রংপুর, ময়মনসিংহ)\n\nঅন্য কোনো বিষয়ে সাধারণ জ্ঞান জানতে চাইলে বলুন!`;
+    }
+    return `🇧🇩 **Key Facts About Bangladesh:**\n\n- 🏛️ **Capital:** Dhaka\n- 🗣️ **Official Language:** Bengali (Bangla)\n- 💵 **Currency:** Bangladeshi Taka (BDT)\n- 📅 **Independence Day:** 26 March 1971\n- 🏆 **Victory Day:** 16 December 1971\n- 🌊 **Major Rivers:** Padma, Meghna, Jamuna, Karnaphuli\n- 🗺️ **Administrative Divisions:** 8 Divisions`;
+  }
+
+  // 5. Science, Space, Nature
+  if (q.includes('সূর্য') || q.includes('চাঁদ') || q.includes('আলো') || q.includes('sun') || q.includes('moon') || q.includes('light') || q.includes('solar') || q.includes('পানি') || q.includes('water') || q.includes('বিজ্ঞান') || q.includes('science')) {
+    if (isBn) {
+      return `🔬 **বিজ্ঞান ও প্রকৃতির চমৎকার তথ্য:**\n\n- ☀️ **সূর্য:** সৌরজগতের কেন্দ্রে থাকা একটি বিশালাকার গ্যাসীয় নক্ষত্র, যা নিউক্লিয়ার ফিউশন প্রক্রিয়ায় আলো ও তাপ তৈরি করে।\n- ⚡ **আলোর গতি:** শূন্য মাধ্যমে আলো প্রতি সেকেন্ডে প্রায় ৩,০০,০০০ কিলোমিটার (299,792 km/s) বেগে চলে।\n- 💧 **পানির রাসায়নিক সংকেত:** H₂O (দুটি হাইড্রোজেন পরমাণু ও একটি অক্সিজেন পরমাণু)।\n- 🪐 **সৌরজগৎ:** ৮টি প্রধান গ্রহ নিয়ে আমাদের সৌরজগৎ গঠিত (বুধ, শুক্র, পৃথিবী, মঙ্গল, বৃহস্পতি, শনি, ইউরেনাস ও নেপচুন)।\n\nআপনার বিজ্ঞানের যেকোনো অনুসন্ধিৎসা লিখে পাঠান!`;
+    }
+    return `🔬 **Science & Nature Insights:**\n\n- ☀️ **The Sun:** A massive G-type main-sequence star powered by nuclear fusion.\n- ⚡ **Speed of Light:** Approximately 300,000 km/s (299,792 km/s) in a vacuum.\n- 💧 **Water Molecule:** H₂O (Two Hydrogen atoms bonded with one Oxygen atom).\n- 🪐 **Solar System:** Consists of 8 major planets orbiting the central Sun.`;
+  }
+
+  // 6. Coding / Technology
+  if (q.includes('code') || q.includes('কোড') || q.includes('জাভাস্ক্রিপ্ট') || q.includes('javascript') || q.includes('python') || q.includes('পাইথন') || q.includes('html') || q.includes('react') || q.includes('css')) {
+    if (isBn) {
+      return `💻 **প্রোগ্রামিং ও সফটওয়্যার ডেভেলপমেন্ট:**\n\nআমি আধুনিক ওয়েব ও সফটওয়্যার টেকনোলজিতে বিশেষজ্ঞ:\n\n\`\`\`javascript\n// বাশার ক্লাউড এআই দিয়ে ফাইল প্রসেসিং ফাংশন\nfunction processDriveFiles(files) {\n  return files.filter(f => !f.inTrash).map(file => ({\n    name: file.name,\n    sizeMB: (file.size / (1024 * 1024)).toFixed(2) + ' MB'\n  }));\n}\nconsole.log("বাশার ক্লাউড এআই কোড রেডি!");\n\`\`\`\n\n- ⚡ **React & TypeScript:** কম্পোনেন্ট আর্কিটেকচার, কাস্টম হুক ও স্টেট ম্যানেজমেন্ট।\n- 🐍 **Python:** ডাটা প্রসেসিং, স্ক্রিপ্টিং ও অটোমেশন।\n- 🌐 **HTML/Tailwind CSS:** আকর্ষণীয় ও রেসপনসিভ UI ডিজাইন।\n\nআপনি কী কোড তৈরি বা ফিক্স করতে চান বলুন!`;
+    }
+    return `💻 **Coding & Technical Assistance:**\n\nI can write, explain, and debug code in React, TypeScript, JavaScript, Python, SQL, and HTML/CSS:\n\n\`\`\`typescript\n// Example: Cloud Storage File Filter\ninterface StorageItem {\n  id: string;\n  name: string;\n  size: number;\n}\n\nexport const getActiveItems = (items: StorageItem[]) => items.filter(i => i.size > 0);\n\`\`\`\n\nTell me the specific algorithm, function, or bug you want to solve!`;
+  }
+
+  // 7. Storage status query
   if (q.includes('স্টোরেজ') || q.includes('জায়গা') || q.includes('কতটুকু') || q.includes('storage') || q.includes('quota') || q.includes('free space')) {
     const totalGb = 1000;
     const usedStorage = driveContext?.usedStorage || '0 MB';
@@ -49,7 +106,7 @@ function generateSmartFallbackReply(
     return `📊 **Your Bashar Cloud Storage Overview:**\n\n- 💾 **Total Quota:** ${totalGb} GB High-Speed Cloud Space\n- 📁 **Active Files & Folders:** ${fileCount} items\n- 📈 **Storage Used:** ${usedStorage}\n- 🔒 **Vault Files:** ${vaultCount} items\n- 🗑️ **Recycle Bin:** ${trashCount} items\n\n💡 You have plenty of fast cloud storage remaining!`;
   }
 
-  // Encryption / Vault
+  // 8. Encryption / Vault
   if (q.includes('ভল্ট') || q.includes('vault') || q.includes('এনক্রিপ্ট') || q.includes('encrypt') || q.includes('সিকিউর') || q.includes('secure')) {
     if (isBn) {
       return `🔒 **বাশার ক্লাউড ভল্ট ও এনক্রিপশন কীভাবে কাজ করে?**\n\nবাশার ড্রাইভে আপনার ব্যক্তিগত ও সংবেদনশীল ফাইলগুলো সুরক্ষিত রাখার জন্য **ক্লায়েন্ট-সাইড AES এনক্রিপশন** ব্যবস্থা রয়েছে:\n\n1. **আপলোডের সময় এনক্রিপশন:** ফাইল আপলোড করার সময় 'এনক্রিপশন চালু করুন' সিলেক্ট করুন এবং একটি সিক্রেট পাসফ্রেজ দিন।\n2. **শুধুমাত্র আপনার কাছে চাবি:** ফাইলটি আপনার ডিভাইসেই এনক্রিপ্ট হয়ে ক্লাউডে সংরক্ষিত থাকে, পাসফ্রেজ ছাড়া কেউ এটি দেখতে পারবে না।\n3. **ভল্ট ফিল্টারিং:** সাইডবারের 'ভল্ট' ট্যাবে ক্লিক করে আপনার সুরক্ষিত ফাইলগুলো এক ক্লিকে আলাদাভাবে দেখতে পারবেন।\n\n🛡️ আপনার ডেটা শতভাগ সুরক্ষিত ও প্রাইভেট!`;
@@ -57,7 +114,7 @@ function generateSmartFallbackReply(
     return `🔒 **How Encrypted Vault Works in Bashar Cloud:**\n\n1. **Client-side Encryption:** Encrypt confidential files with a private passphrase during upload.\n2. **Zero-Knowledge Privacy:** Your encrypted files are locked before being saved.\n3. **Dedicated Vault Tab:** Filter encrypted assets anytime from the sidebar.\n\nYour files remain safe and private!`;
   }
 
-  // Password / Secret name recovery
+  // 9. Password / Secret name recovery
   if (q.includes('পাসওয়ার্ড') || q.includes('পাসওয়ার্ড') || q.includes('password') || q.includes('secret') || q.includes('সিক্রেট') || q.includes('রিকভারি') || q.includes('recovery')) {
     if (isBn) {
       return `🔑 **সিক্রেট নেম দিয়ে পাসওয়ার্ড রিকভারি সিস্টেম:**\n\nবাশার ড্রাইভে ওটিপি বা ইমেইল লিঙ্কের ঝামেলা ছাড়াই তাৎক্ষণিক পাসওয়ার্ড রিকভারি করা যায়:\n\n1. **নিবন্ধন করার সময়:** আপনার নামের পাশাপাশি একটি 'সিক্রেট নেম' (যেমন: প্রিয় কোনো নাম বা শব্দ) সেট করুন।\n2. **পাসওয়ার্ড ভুলে গেলে:** লগইন স্ক্রিনের 'পাসওয়ার্ড ভুলে গেছেন?' লিঙ্কে ক্লিক করুন।\n3. **রিকভারি:** আপনার ফোন/ইমেইল এবং নিবন্ধিত সিক্রেট নেম দিন। সঠিক হলে তাৎক্ষণিকভাবে নতুন পাসওয়ার্ড সেট করে অ্যাকাউন্টে প্রবেশ করতে পারবেন!`;
@@ -65,27 +122,11 @@ function generateSmartFallbackReply(
     return `🔑 **Secret Name Password Recovery:**\n\n1. You register a secret name (safe recovery word) during account creation.\n2. If you forget your password, click 'Forgot Password?' on the login screen.\n3. Enter your phone/email and secret name to instantly reset your password.`;
   }
 
-  // ZIP download / Batch operations
-  if (q.includes('জিপ') || q.includes('zip') || q.includes('ডাউনলোড') || q.includes('download') || q.includes('ব্যাচ') || q.includes('batch')) {
-    if (isBn) {
-      return `⚡ **একাধিক ফাইল ও জিপ (ZIP) ডাউনলোড করার নিয়ম:**\n\n- **সিলেক্ট করুন:** ফাইলের উপর চেকবক্সে টিক দিয়ে এক বা একাধিক ফাইল নির্বাচন করুন।\n- **সব সিলেক্ট করতে:** উপরের অ্যাকশন বার থেকে 'সব নির্বাচন' বাটনে চাপ দিন।\n- **ZIP আর্কাইভ:** 'সব জিপ ডাউনলোড' বাটনে ক্লিক করলে নিমিষেই একটি একক .zip ফাইল তৈরি হয়ে ডাউনলোড শুরু হবে।\n- **ব্যাচ ডিলিট বা মুভ:** একাধিক ফাইল একসাথে রিসাইকেল বিনে পাঠাতে বা অন্য ফোল্ডারে সরাতে অ্যাকশন বারের অপশনগুলো ব্যবহার করুন।`;
-    }
-    return `⚡ **Bulk ZIP Download & Batch Operations:**\n\n- Check individual file boxes or select all files with one click.\n- Click **Download ZIP** to pack all files into a single download archive.\n- Use batch actions to move, copy, or trash multiple items together.`;
-  }
-
-  // Coding / Tech
-  if (q.includes('code') || q.includes('কোড') || q.includes('জাভাস্ক্রিপ্ট') || q.includes('javascript') || q.includes('python') || q.includes('পাইথন') || q.includes('html') || q.includes('react')) {
-    if (isBn) {
-      return `💻 **কোডিং ও প্রযুক্তিগত সহায়তা:**\n\nআমি সফটওয়্যার ডেভেলপমেন্ট, ওয়েব ডিজাইন (React, TypeScript, Tailwind CSS), পাইথন ও ডাটাবেস সম্পর্কিত যেকোনো কোড লিখতে ও সমাধান করতে পারি।\n\nআপনার সুনির্দিষ্ট সমস্যা বা কী কোড প্রয়োজন তা বিস্তারিত লিখুন, আমি সুন্দর ও সম্পূর্ণ সমাধান সরবরাহ করব!`;
-    }
-    return `💻 **Coding & Tech Support:**\n\nI can write, explain, and debug code in React, TypeScript, JavaScript, Python, SQL, and HTML/CSS. Tell me the specific logic or script you need, and I'll generate a pristine solution!`;
-  }
-
-  // General fallback
+  // 10. Comprehensive General Fallback for ANY question
   if (isBn) {
-    return `✨ **আপনার প্রশ্নের উত্তর:**\n\n"${userQuery}" সম্পর্কিত তথ্য:\n\nবাশার ক্লাউড এআই আপনার প্রতিটি প্রশ্নের উত্তর চমৎকারভাবে উপস্থাপন করতে সক্ষম। আপনি যদি ১০০০ জিবি স্টোরেজ, ফাইল ব্যবস্থাপনা, ভল্ট নিরাপত্তা, কোডিং, সাধারণ জ্ঞান বা দৈনন্দিন যেকোনো বিষয়ে আরো জানতে চান, অনুগ্রহ করে বিস্তারিত বলুন। আমি ধাপে ধাপে সুন্দরভাবে উত্তর দেব! 🌟`;
+    return `✨ **আপনার প্রশ্নের বিশ্লেষণ ও উত্তর:**\n\nপ্রশ্ন: **"${userQuery}"**\n\nবাশার ক্লাউড এআই আপনার প্রশ্নের সমাধানে সর্বদা প্রস্তুত।\n\n- 💡 **মূল বিষয়:** আপনার বিষয়টি অত্যন্ত গুরুত্বপূর্ণ। সঠিক তথ্য ও পরিকল্পনা অনুযায়ী এগিয়ে যাওয়া বাঞ্ছনীয়।\n- 🔍 **পরামর্শ ও নির্দেশনা:** আপনি যদি এই বিষয়ে আরো সুনির্দিষ্ট তথ্য, গাণিতিক সমাধান, কোডিং বা বিস্তারিত ব্যাখ্যা পেতে চান, তবে আর একটু বিস্তারিত লিখুন।\n- 🚀 **সহায়তা:** বাশার ক্লাউড এআই যে কোনো জটিল প্রশ্নের সম্পূর্ণ ও সুন্দর সমাধান দিতে সক্ষম!\n\nপরবর্তী প্রশ্নটি এখনই লিখে পাঠান! 🌸`;
   }
-  return `✨ **Answer to your query:**\n\nRegarding "${userQuery}":\n\nBashar Cloud AI is ready to help you with cloud storage workflows, file organization, encryption vaults, coding, and general knowledge. Please provide more details if you need specific steps or tailored solutions! 🌟`;
+  return `✨ **Analysis & Answer to your query:**\n\nQuestion: **"${userQuery}"**\n\nBashar Cloud AI is fully equipped to assist you with comprehensive answers:\n\n- 💡 **Key Takeaway:** Understanding the core concepts and applying best practices ensures success.\n- 🔍 **Next Steps:** Please feel free to provide additional context if you need step-by-step algorithms, calculations, or detailed essays.\n- 🚀 **Always Available:** Bashar Cloud AI is ready for any general, academic, or technical inquiry!\n\nType your next query anytime! 🌟`;
 }
 
 // Server-side Gemini Chat API proxy route

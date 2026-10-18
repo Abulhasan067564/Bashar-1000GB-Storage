@@ -22,7 +22,8 @@ import {
   HardDrive,
   ShieldCheck,
   Zap,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 import { StorageStats, StorageFile, UserAccount } from '../types/storage';
 
@@ -248,6 +249,7 @@ export const GeminiChatbot: React.FC<GeminiChatbotProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<'gemini-3.8-flash' | 'gemini-3.1-flash-lite' | 'gemini-4-argon'>('gemini-3.8-flash');
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
@@ -496,8 +498,22 @@ Your capabilities:
     };
     setMessages([welcome]);
     try {
-      localStorage.removeItem(STORAGE_CHAT_KEY);
+      localStorage.setItem(STORAGE_CHAT_KEY, JSON.stringify([welcome]));
     } catch {}
+  };
+
+  const handleDeleteMessage = (id: string) => {
+    if (speakingMsgId === id && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+    }
+    setMessages(prev => {
+      const updated = prev.filter(m => m.id !== id);
+      try {
+        localStorage.setItem(STORAGE_CHAT_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
   };
 
   const handleCopyMessage = (id: string, text: string) => {
@@ -605,58 +621,81 @@ Your capabilities:
       {/* Chat Window */}
       {isOpen && (
         <div 
-          className={`fixed z-50 transition-all duration-200 flex flex-col shadow-2xl border border-cyan-500/30 backdrop-blur-2xl bg-slate-950/95 text-slate-100 ${
+          className={`fixed z-50 transition-all duration-200 flex flex-col shadow-2xl border border-cyan-500/30 backdrop-blur-2xl bg-slate-950/98 text-slate-100 ${
             isMinimized 
               ? 'bottom-5 right-5 w-80 h-14 rounded-2xl overflow-hidden'
-              : 'bottom-3 right-3 sm:bottom-5 sm:right-5 w-[96vw] sm:w-[460px] h-[88vh] sm:h-[650px] max-h-[88vh] rounded-3xl overflow-hidden'
+              : isFullScreen
+              ? 'fixed inset-2 sm:inset-4 md:inset-6 rounded-3xl overflow-hidden border-cyan-500/40 shadow-2xl shadow-cyan-950/50'
+              : 'bottom-3 right-3 sm:bottom-5 sm:right-5 w-[96vw] sm:w-[500px] h-[88vh] sm:h-[680px] max-h-[92vh] rounded-3xl overflow-hidden'
           }`}
         >
           {/* Header */}
           <div className="px-4 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-slate-950 shadow-md shadow-cyan-500/30 shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-slate-950 shadow-md shadow-cyan-500/30 shrink-0 font-black">
                 <Bot className="w-4 h-4" />
               </div>
               <div className="truncate">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <h3 className="text-xs sm:text-sm font-black text-white truncate">
                     {lang === 'bn' ? 'বাশার ক্লাউড এআই' : 'Bashar Cloud AI'}
                   </h3>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span className="text-[10px] text-emerald-400 font-mono font-semibold">Online</span>
                 </div>
-                <p className="text-[10px] text-cyan-400/90 font-mono flex items-center gap-1 truncate">
+                <p className="text-[10px] text-cyan-400/90 font-mono flex items-center gap-1.5 truncate">
                   <Cpu className="w-3 h-3 text-cyan-400" />
                   <span>{selectedModel}</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-400">{lang === 'bn' ? 'যেকোনো প্রশ্নের দ্রুত উত্তর' : 'Fast Q&A'}</span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              {/* Clear History */}
+              {/* Clear All Chat Button */}
               {!isMinimized && (
                 <button
                   onClick={handleClearHistory}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-                  title={lang === 'bn' ? 'কথোপকথন পরিষ্কার করুন' : 'Clear Chat'}
+                  className="px-2 py-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-900/50 transition cursor-pointer flex items-center gap-1"
+                  title={lang === 'bn' ? 'সকল চ্যাট ডিলিট করুন' : 'Clear all chat'}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px] font-semibold">{lang === 'bn' ? 'চ্যাট মুছুন' : 'Clear'}</span>
                 </button>
               )}
 
-              {/* Minimize / Maximize */}
+              {/* Fullscreen / Large Screen Toggle Button */}
+              {!isMinimized && (
+                <button
+                  onClick={() => { setIsFullScreen(!isFullScreen); setIsMinimized(false); }}
+                  className={`px-2 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 text-xs border ${
+                    isFullScreen 
+                      ? 'text-cyan-300 bg-cyan-950/60 border-cyan-500/40 shadow-sm' 
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900 border-transparent hover:border-slate-800'
+                  }`}
+                  title={isFullScreen ? (lang === 'bn' ? 'স্বাভাবিক স্ক্রিন' : 'Exit Full Screen') : (lang === 'bn' ? 'বড় স্ক্রিন (পূর্ণ পর্দা)' : 'Full Screen')}
+                >
+                  {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline text-[11px] font-semibold">
+                    {isFullScreen ? (lang === 'bn' ? 'ছোট স্ক্রিন' : 'Compact') : (lang === 'bn' ? 'বড় স্ক্রিন' : 'Full Screen')}
+                  </span>
+                </button>
+              )}
+
+              {/* Minimize */}
               <button
                 onClick={() => setIsMinimized(!isMinimized)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-                title={isMinimized ? 'Expand' : 'Minimize'}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition cursor-pointer font-black text-sm"
+                title={isMinimized ? (lang === 'bn' ? 'বড় করুন' : 'Expand') : (lang === 'bn' ? 'মিনিমাইজ' : 'Minimize')}
               >
-                {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <span className="px-1 leading-none">−</span>}
               </button>
 
               {/* Close */}
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-900 transition cursor-pointer"
                 title="Close"
               >
                 <X className="w-4 h-4" />
