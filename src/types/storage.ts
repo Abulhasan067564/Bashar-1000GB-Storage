@@ -63,6 +63,7 @@ export interface UserAccount {
   pendingSenderPhone?: string;
   pendingMethod?: 'bkash' | 'nagad';
   pendingDate?: string;
+  adminNote?: string;
 }
 
 export interface PaymentRequest {

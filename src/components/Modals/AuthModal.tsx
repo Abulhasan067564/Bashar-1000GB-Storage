@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { UserAccount } from '../../types/storage';
-import { Lock, User, KeyRound, HelpCircle, CheckCircle2, AlertCircle, X, Sparkles, Calendar } from 'lucide-react';
-import { isSameEmailOrPhone } from '../../utils/accountValidation';
-import { removeDeletedUserId } from '../../services/firebase';
+import { Lock, User, KeyRound, HelpCircle, CheckCircle2, AlertCircle, X, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { isSameEmailOrPhone, convertBengaliDigitsToEnglish } from '../../utils/accountValidation';
+import { removeDeletedUserId, findUserInFirestore, saveUserToFirestore } from '../../services/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -32,77 +32,176 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const user = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
+    const rawInput = emailOrPhone.trim();
+    if (!rawInput) {
+      setError(lang === 'bn' ? 'অনুগ্রহ করে ইমেইল বা মোবাইল নম্বর দিন।' : 'Please enter email or phone.');
+      return;
+    }
+    if (!password) {
+      setError(lang === 'bn' ? 'অনুগ্রহ করে পাসওয়ার্ড দিন।' : 'Please enter password.');
+      return;
+    }
+
+    const cleanInput = convertBengaliDigitsToEnglish(rawInput);
+
+    // 1. Instant check in memory (0ms)
+    let user = usersList.find(
+      u => isSameEmailOrPhone(u.emailOrPhone, cleanInput) ||
+           u.emailOrPhone.trim().toLowerCase() === cleanInput.toLowerCase()
     );
 
+    // 2. If not found locally, fast query Firestore directly
     if (!user) {
-      setError(lang === 'bn' ? 'এই ইমেইল বা ফোন নম্বরের কোনো একাউন্ট পাওয়া যায়নি।' : 'No account found with this email or phone.');
+      setIsSubmitting(true);
+      try {
+        const cloudUser = await findUserInFirestore(cleanInput);
+        if (cloudUser) {
+          user = cloudUser;
+          // Merge to local usersList
+          const updated = [...usersList.filter(u => u.id !== cloudUser.id), cloudUser];
+          onUpdateUsersList(updated);
+        }
+      } catch (err) {
+        console.warn('Login lookup notice:', err);
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
+    if (!user) {
+      setError(
+        lang === 'bn' 
+          ? 'এই ইমেইল বা ফোন নম্বরের কোনো একাউন্ট পাওয়া যায়নি। প্রথমে "নতুন একাউন্ট" থেকে সাইন আপ করুন।' 
+          : 'No account found with this email or phone. Please sign up first.'
+      );
+      return;
+    }
+
+    if (user.status === 'disabled') {
+      setError(
+        lang === 'bn' 
+          ? 'এই একাউন্টটি সাময়িকভাবে নিষ্ক্রিয় করা আছে। অ্যাডমিনের সাথে যোগাযোগ করুন।' 
+          : 'This account has been disabled. Please contact admin.'
+      );
       return;
     }
 
     if (user.passwordHash !== password) {
-      setError(lang === 'bn' ? 'পাসওয়ার্ড সঠিক নয়!' : 'Incorrect password!');
+      setError(lang === 'bn' ? 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন।' : 'Incorrect password!');
       return;
     }
 
-    onLoginSuccess(user);
+    // Update last login
+    const updatedUser = { ...user, lastLoginAt: new Date().toISOString() };
+    saveUserToFirestore(updatedUser).catch(() => {});
+
+    onLoginSuccess(updatedUser);
     onClose();
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!emailOrPhone.trim() || !password.trim() || !secretName.trim()) {
-      setError(lang === 'bn' ? 'অনুগ্রহ করে সকল প্রয়োজনীয় তথ্য পূরণ করুন।' : 'Please fill all required fields.');
+    const rawInput = emailOrPhone.trim();
+    if (!rawInput) {
+      setError(lang === 'bn' ? 'অনুগ্রহ করে ইমেইল বা ফোন নম্বর দিন।' : 'Please enter email or phone.');
+      return;
+    }
+    if (!password.trim()) {
+      setError(lang === 'bn' ? 'অনুগ্রহ করে পাসওয়ার্ড দিন।' : 'Please enter password.');
       return;
     }
 
+    const cleanIdent = convertBengaliDigitsToEnglish(rawInput);
+
+    // Check existing in local cache
     const existing = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
+      u => isSameEmailOrPhone(u.emailOrPhone, cleanIdent) ||
+           u.emailOrPhone.trim().toLowerCase() === cleanIdent.toLowerCase()
     );
     if (existing) {
-      setError(lang === 'bn' ? 'এই ইমেইল বা ফোন নম্বর ইতিমধ্যে ব্যবহৃত হয়েছে।' : 'Email or phone is already registered.');
+      setError(
+        lang === 'bn' 
+          ? 'এই ইমেইল বা মোবাইল নম্বর ইতিমধ্যে নিবন্ধিত আছে। দয়া করে লগইন করুন।' 
+          : 'Email or phone already registered. Please sign in.'
+      );
       return;
     }
 
-    const cleanIdent = emailOrPhone.trim();
-    const normalizedIdent = cleanIdent.replace(/[\s\-\(\)\+]/g, '').toLowerCase();
-    const newUserId = 'u_' + (normalizedIdent || Date.now());
+    setIsSubmitting(true);
+    try {
+      // Fast check Firestore cloud to avoid duplication across devices
+      const cloudUser = await findUserInFirestore(cleanIdent);
+      if (cloudUser) {
+        setError(
+          lang === 'bn'
+            ? 'এই একাউন্টটি ইতিমধ্যে ক্লাউডে বিদ্যমান। অনুগ্রহ করে লগইন করুন।'
+            : 'Account already exists. Please sign in.'
+        );
+        setIsSubmitting(false);
+        return;
+      }
 
-    const newUser: UserAccount = {
-      id: newUserId,
-      name: name.trim() || (lang === 'bn' ? 'বাশার ইউজার' : 'Bashar User'),
-      emailOrPhone: cleanIdent,
-      secretName: secretName.trim().toLowerCase(),
-      birthDate: birthDate.trim() || undefined,
-      passwordHash: password,
-      totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
-      createdAt: new Date().toISOString()
-    };
+      const normalizedIdent = cleanIdent.replace(/[\s\-\(\)\+]/g, '').toLowerCase();
+      const newUserId = 'u_' + (normalizedIdent || Date.now());
+      const cleanSecret = (secretName.trim() || name.trim() || 'bashar1000').toLowerCase();
 
-    removeDeletedUserId(newUser.id);
-    const updated = [...usersList, newUser];
-    onUpdateUsersList(updated);
-    onLoginSuccess(newUser);
-    onClose();
+      const newUser: UserAccount = {
+        id: newUserId,
+        name: name.trim() || (lang === 'bn' ? 'বাশার ইউজার' : 'Bashar User'),
+        emailOrPhone: cleanIdent,
+        secretName: cleanSecret,
+        birthDate: birthDate.trim() || undefined,
+        passwordHash: password,
+        totalStorageBytes: 1000 * 1024 * 1024 * 1024, // 1000 GB
+        createdAt: new Date().toISOString(),
+        status: 'active',
+        role: 'user',
+        isLifetimeUnlocked: false
+      };
+
+      removeDeletedUserId(newUser.id);
+      const updated = [...usersList, newUser];
+      onUpdateUsersList(updated);
+      saveUserToFirestore(newUser).catch(() => {});
+      onLoginSuccess(newUser);
+      onClose();
+    } catch (err) {
+      console.error('Sign up error:', err);
+      setError(lang === 'bn' ? 'সাইন আপ সম্পন্ন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।' : 'Sign up failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const user = usersList.find(
-      u => u.emailOrPhone.trim().toLowerCase() === emailOrPhone.trim().toLowerCase()
+    const cleanInput = convertBengaliDigitsToEnglish(emailOrPhone.trim());
+    let user = usersList.find(
+      u => isSameEmailOrPhone(u.emailOrPhone, cleanInput) ||
+           u.emailOrPhone.trim().toLowerCase() === cleanInput.toLowerCase()
     );
+
+    if (!user) {
+      setIsSubmitting(true);
+      try {
+        const cloudUser = await findUserInFirestore(cleanInput);
+        if (cloudUser) user = cloudUser;
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
 
     if (!user) {
       setError(lang === 'bn' ? 'এই একাউন্টটি খুঁজে পাওয়া যায়নি।' : 'Account not found.');
@@ -110,7 +209,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (user.secretName.trim().toLowerCase() !== secretName.trim().toLowerCase()) {
-      setError(lang === 'bn' ? 'সিক্রেট নাম মেলেনি! সঠিক সিক্রেট নাম দিন।' : 'Secret name did not match! Please provide correct secret.');
+      setError(lang === 'bn' ? 'সিক্রেট নাম মেলেনি! একাউন্ট খোলার সময় দেওয়া সঠিক সিক্রেট নাম দিন।' : 'Secret name did not match! Please provide correct secret.');
       return;
     }
 
@@ -119,20 +218,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const updated = usersList.map(u => {
-      if (u.id === user.id) {
-        return { ...u, passwordHash: newPassword };
-      }
-      return u;
-    });
+    const updatedUser = { ...user, passwordHash: newPassword };
+    const updated = usersList.map(u => u.id === user!.id ? updatedUser : u);
 
     onUpdateUsersList(updated);
+    saveUserToFirestore(updatedUser).catch(() => {});
+
     setSuccess(lang === 'bn' ? 'পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে! নতুন পাসওয়ার্ড দিয়ে লগইন করুন।' : 'Password updated successfully! Please login with your new password.');
     setTimeout(() => {
       setSuccess(null);
       setPassword(newPassword);
       setMode('login');
-    }, 1500);
+    }, 1200);
   };
 
   return (
@@ -238,9 +335,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {lang === 'bn' ? 'লগইন করুন' : 'Sign In'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  <span>{lang === 'bn' ? 'লগইন হচ্ছে...' : 'Signing In...'}</span>
+                </>
+              ) : (
+                <>
+                  <span>{lang === 'bn' ? 'লগইন করুন' : 'Sign In'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
         )}
@@ -325,9 +433,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {lang === 'bn' ? '১০০০ জিবি একাউন্ট তৈরি করুন' : 'Create 1000GB Account'}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  <span>{lang === 'bn' ? 'একাউন্ট তৈরি হচ্ছে...' : 'Creating Account...'}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>{lang === 'bn' ? '১০০০ জিবি একাউন্ট তৈরি করুন' : 'Create 1000GB Account'}</span>
+                </>
+              )}
             </button>
           </form>
         )}

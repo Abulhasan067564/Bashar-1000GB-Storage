@@ -463,6 +463,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const activeUsersCount = usersList.filter(u => (u.status || 'active') === 'active').length;
   const disabledUsersCount = usersList.filter(u => u.status === 'disabled').length;
 
+  // Payment Requests Statistics
+  const pendingPaymentsCount = useMemo(() => {
+    return paymentRequests.filter(r => r.status === 'pending').length;
+  }, [paymentRequests]);
+
+  const approvedPaymentsCount = useMemo(() => {
+    return paymentRequests.filter(r => r.status === 'approved').length;
+  }, [paymentRequests]);
+
+  const rejectedPaymentsCount = useMemo(() => {
+    return paymentRequests.filter(r => r.status === 'rejected').length;
+  }, [paymentRequests]);
+
+  // Filtered and Sorted Payment Requests
+  const filteredPaymentRequests = useMemo(() => {
+    return paymentRequests
+      .filter(req => {
+        const matchesFilter = paymentFilter === 'all' || req.status === paymentFilter;
+        const q = paymentSearch.toLowerCase().trim();
+        const matchesSearch = !q || 
+          req.trxId.toLowerCase().includes(q) ||
+          req.senderPhone.includes(q) ||
+          req.userName.toLowerCase().includes(q) ||
+          req.userEmailOrPhone.toLowerCase().includes(q) ||
+          req.id.toLowerCase().includes(q);
+        return matchesFilter && matchesSearch;
+      })
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  }, [paymentRequests, paymentFilter, paymentSearch]);
+
+  const handleApprove = async (req: PaymentRequest) => {
+    if (onApprovePaymentRequest) {
+      await onApprovePaymentRequest(req.id, req.userId);
+      showNotification(
+        lang === 'bn' 
+          ? `ইউজার ${req.userName}-এর TrxID (${req.trxId}) সফলভাবে অ্যাপ্রুভ হয়েছে! আজীবন আনলক করা হয়েছে।` 
+          : `Approved payment for ${req.userName}! Lifetime access activated.`
+      );
+    }
+  };
+
+  const handleOpenRejectModal = (req: PaymentRequest) => {
+    setRejectingRequest(req);
+    setRejectReason(lang === 'bn' ? 'প্রদত্ত TrxID সঠিক পাওয়া যায়নি।' : 'Invalid TrxID provided.');
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectingRequest) return;
+    if (onRejectPaymentRequest) {
+      await onRejectPaymentRequest(rejectingRequest.id, rejectingRequest.userId, rejectReason.trim());
+      showNotification(
+        lang === 'bn'
+          ? `পেমেন্ট রিকোয়েস্ট (${rejectingRequest.trxId}) বাতিল (Rejected) করা হয়েছে।`
+          : `Payment request rejected.`,
+        'error'
+      );
+    }
+    setRejectingRequest(null);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white">
       {/* Toast Notification */}
@@ -619,7 +679,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
         
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {/* Card 1: Total Users */}
           <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-slate-700 transition">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-rose-400">
@@ -653,23 +713,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          {/* Card 3: Disabled Accounts */}
-          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-slate-700 transition">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-rose-400">
-              <UserX className="w-16 h-16" />
+          {/* Card 3: Pending TrxID Approvals (Clickable) */}
+          <div 
+            onClick={() => setAdminTab('payments')}
+            className={`p-5 rounded-2xl bg-slate-900/90 border shadow-lg relative overflow-hidden group hover:scale-[1.02] transition cursor-pointer ${
+              pendingPaymentsCount > 0 
+                ? 'border-amber-500/60 shadow-amber-500/10 ring-1 ring-amber-500/40' 
+                : 'border-slate-800 hover:border-slate-700'
+            }`}
+            title={lang === 'bn' ? 'পেমেন্ট অনুমোদনে ক্লিক করুন' : 'Click to view payment requests'}
+          >
+            <div className="absolute top-0 right-0 p-4 opacity-15 group-hover:opacity-30 transition text-amber-400">
+              <Clock className="w-16 h-16" />
             </div>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              {lang === 'bn' ? 'নিষ্ক্রিয় অ্যাকাউন্ট' : 'Disabled Accounts'}
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider">
+                {lang === 'bn' ? 'পেন্ডিং TrxID অনুমোদন' : 'Pending TrxID'}
+              </span>
+              {pendingPaymentsCount > 0 && (
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              )}
             </div>
-            <div className="text-3xl font-black text-rose-400 tracking-tight">
-              {disabledUsersCount}
+            <div className="text-3xl font-black text-amber-400 tracking-tight flex items-center gap-2">
+              <span>{pendingPaymentsCount}</span>
+              <span className="text-xs font-normal text-slate-400">
+                {lang === 'bn' ? 'টি অপেক্ষমাণ' : 'pending'}
+              </span>
             </div>
-            <div className="text-[11px] text-rose-500/80 mt-2">
-              {lang === 'bn' ? 'লগইন সাময়িকভাবে বন্ধ' : 'Login temporarily restricted'}
+            <div className="text-[11px] text-amber-300/80 mt-2 font-medium flex items-center gap-1">
+              <CreditCard className="w-3 h-3 text-amber-400" />
+              <span>{lang === 'bn' ? 'যাচাই করে অ্যাপ্রুভ করুন →' : 'Review & Approve →'}</span>
             </div>
           </div>
 
-          {/* Card 4: Allocated Capacity */}
+          {/* Card 4: Lifetime Members */}
+          <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-amber-400">
+              <Crown className="w-16 h-16" />
+            </div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+              {lang === 'bn' ? 'আজীবন আনলক গ্রাহক' : 'Lifetime Members'}
+            </div>
+            <div className="text-3xl font-black text-amber-300 tracking-tight">
+              {usersList.filter(u => u.isLifetimeUnlocked).length}
+            </div>
+            <div className="text-[11px] text-amber-400/80 mt-2">
+              {lang === 'bn' ? '১০০৳ ফি ও প্রোমো আনলক' : '100 Tk & Promo unlocked'}
+            </div>
+          </div>
+
+          {/* Card 5: Allocated Capacity */}
           <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg relative overflow-hidden group hover:border-slate-700 transition">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition text-cyan-400">
               <HardDrive className="w-16 h-16" />
@@ -681,12 +774,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {totalUsersCount * 1000} <span className="text-lg font-bold text-slate-400">GB</span>
             </div>
             <div className="text-[11px] text-cyan-500/80 mt-2">
-              {lang === 'bn' ? 'প্রতি ইউজারে ১,০০০ জিবি' : '1,000 GB per registered user'}
+              {lang === 'bn' ? 'প্রতি ইউজারে ১,০০০ জিবি' : '1,000 GB per user'}
             </div>
           </div>
         </div>
 
+        {/* Tab Switcher: Users List vs Payment Requests */}
+        <div className="flex items-center gap-3 border-b border-slate-800 pb-2">
+          <button
+            onClick={() => setAdminTab('users')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              adminTab === 'users'
+                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/25 border border-rose-500'
+                : 'bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'নিবন্ধিত ইউজার তালিকা' : 'Registered Users'}</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
+              adminTab === 'users' ? 'bg-rose-800/80 text-rose-100' : 'bg-slate-800 text-slate-400'
+            }`}>
+              {usersList.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setAdminTab('payments')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              adminTab === 'payments'
+                ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 border border-amber-400 font-black'
+                : 'bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800 hover:border-slate-700'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'পেমেন্ট ও TrxID অনুমোদন' : 'Payment Requests & TrxID'}</span>
+            {pendingPaymentsCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-black text-xs animate-pulse flex items-center gap-1 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                {pendingPaymentsCount} {lang === 'bn' ? 'পেন্ডিং' : 'Pending'}
+              </span>
+            ) : (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold ${
+                adminTab === 'payments' ? 'bg-amber-600/80 text-slate-950' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {paymentRequests.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Section: Sign Up Users */}
+        {adminTab === 'users' && (
         <section className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
           {/* Header of Section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
@@ -850,6 +988,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
                       </div>
                     </th>
+                    <th className="py-3 px-4">
+                      {lang === 'bn' ? 'সাবস্ক্রিপশন (Lifetime)' : 'Subscription'}
+                    </th>
                     <th className="py-3 px-4 text-right rounded-r-xl">
                       {lang === 'bn' ? 'অ্যাকশন (Actions)' : 'Actions'}
                     </th>
@@ -979,7 +1120,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
 
-                        {/* 6. Actions */}
+                        {/* 6. Subscription / Lifetime Status */}
+                        <td className="py-3.5 px-4">
+                          {user.isLifetimeUnlocked ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold shadow-sm">
+                              <Crown className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{lang === 'bn' ? 'আজীবন আনলক' : 'Lifetime'}</span>
+                            </span>
+                          ) : user.subscriptionRequestStatus === 'pending' ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold animate-pulse">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>TrxID: {user.pendingTrxId || 'পেন্ডিং'}</span>
+                              </span>
+                              {onApprovePaymentRequest && (
+                                <button
+                                  onClick={() => {
+                                    const matchReq = paymentRequests.find(r => r.userId === user.id || (user.pendingTrxId && r.trxId === user.pendingTrxId));
+                                    if (matchReq) {
+                                      handleApprove(matchReq);
+                                    } else if (onDirectUnlockUser) {
+                                      onDirectUnlockUser(user.id);
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-[10px] font-black transition cursor-pointer shadow-sm"
+                                  title={lang === 'bn' ? 'পেমেন্ট অ্যাপ্রুভ করুন' : 'Approve Payment'}
+                                >
+                                  {lang === 'bn' ? 'অ্যাপ্রুভ' : 'Approve'}
+                                </button>
+                              )}
+                            </div>
+                          ) : user.subscriptionRequestStatus === 'rejected' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-800/80 text-[10px] font-bold">
+                              <span>{lang === 'bn' ? 'বাতিলকৃত' : 'Rejected'}</span>
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {lang === 'bn' ? '৩০ দিন ট্রায়াল' : '30D Trial'}
+                              </span>
+                              {onDirectUnlockUser && (
+                                <button
+                                  onClick={() => onDirectUnlockUser(user.id)}
+                                  className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition cursor-pointer"
+                                  title={lang === 'bn' ? 'সরাসরি আজীবন এক্সেস আনলক করুন' : 'Direct Unlock Lifetime'}
+                                >
+                                  {lang === 'bn' ? 'আনলক' : 'Unlock'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 7. Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Edit User Details, Logo, Birthdate, Password */}
@@ -1018,6 +1211,309 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
         </section>
+        )}
+
+        {/* TAB 2: PAYMENT REQUESTS & TRXID APPROVALS */}
+        {adminTab === 'payments' && (
+          <section className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5 animate-in fade-in">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-amber-400" />
+                  <h2 className="text-xl font-black text-white tracking-tight">
+                    {lang === 'bn' ? 'পেমেন্ট ও TrxID অনুমোদন (Payment Requests)' : 'Payment Approvals & TrxID'}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-800 text-xs font-bold text-slate-300">
+                    {filteredPaymentRequests.length}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {lang === 'bn'
+                    ? 'ইউজাররা বিকাশ বা নগদ থেকে ১০০ টাকা সেন্ড মানি করে যে TrxID জমা দিয়েছে তা এখানে এসেছে। অ্যাপ্রুভ দিলে সাথে সাথে আজীবন আনলক হবে, আর রিজেক্ট দিলে বাতিল হবে।'
+                    : '100 Tk transactions submitted by users. Approve to grant lifetime access or reject if invalid.'}
+                </p>
+              </div>
+
+              {/* Instructions banner */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono">
+                <span className="text-slate-400 font-sans">{lang === 'bn' ? 'প্রাপক নম্বর:' : 'Target:'}</span>
+                <span className="font-bold text-cyan-300">01734211584</span>
+                <span className="text-amber-400 font-bold ml-1">১০০ ৳</span>
+              </div>
+            </div>
+
+            {/* Filter and Search controls */}
+            <div className="pt-1 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Search input */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={paymentSearch}
+                  onChange={e => setPaymentSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'TrxID, প্রেরক নম্বর, নাম বা ইমেইল দিয়ে খুঁজুন...' : 'Search by TrxID, sender phone, name...'}
+                  className="w-full bg-slate-950/70 border border-slate-800 rounded-xl pl-10 pr-8 py-2 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+                />
+                {paymentSearch && (
+                  <button
+                    onClick={() => setPaymentSearch('')}
+                    className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter buttons */}
+              <div className="flex items-center bg-slate-950/70 border border-slate-800 rounded-xl p-1 text-xs flex-wrap gap-1">
+                <button
+                  onClick={() => setPaymentFilter('all')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                    paymentFilter === 'all'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {lang === 'bn' ? 'সকল' : 'All'} ({paymentRequests.length})
+                </button>
+                <button
+                  onClick={() => setPaymentFilter('pending')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    paymentFilter === 'pending'
+                      ? 'bg-amber-600 text-white font-black shadow-sm'
+                      : 'text-amber-400 hover:text-amber-200'
+                  }`}
+                >
+                  <span>⏳ {lang === 'bn' ? 'পেন্ডিং' : 'Pending'}</span>
+                  <span className="font-mono">({pendingPaymentsCount})</span>
+                </button>
+                <button
+                  onClick={() => setPaymentFilter('approved')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    paymentFilter === 'approved'
+                      ? 'bg-emerald-600 text-white font-black shadow-sm'
+                      : 'text-emerald-400 hover:text-emerald-200'
+                  }`}
+                >
+                  <span>✅ {lang === 'bn' ? 'অ্যাপ্রুভড' : 'Approved'}</span>
+                  <span className="font-mono">({approvedPaymentsCount})</span>
+                </button>
+                <button
+                  onClick={() => setPaymentFilter('rejected')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    paymentFilter === 'rejected'
+                      ? 'bg-rose-900 text-rose-200 font-black shadow-sm'
+                      : 'text-rose-400 hover:text-rose-200'
+                  }`}
+                >
+                  <span>❌ {lang === 'bn' ? 'বাতিল' : 'Rejected'}</span>
+                  <span className="font-mono">({rejectedPaymentsCount})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table or Empty State */}
+            {filteredPaymentRequests.length === 0 ? (
+              <div className="py-16 text-center bg-slate-950/40 rounded-2xl border border-slate-800/80">
+                <CreditCard className="w-12 h-12 text-slate-700 mx-auto mb-3" />
+                <h3 className="text-sm font-bold text-slate-300">
+                  {lang === 'bn' ? 'কোনো পেমেন্ট রিকোয়েস্ট পাওয়া যায়নি' : 'No payment requests found'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                  {lang === 'bn'
+                    ? 'ইউজাররা যখন অ্যাপ থেকে বিকাশ বা নগদে ১০০ টাকা সেন্ড মানি করে তাদের TrxID জমা দিবে, তখন সেগুলো এখানে প্রদর্শিত হবে।'
+                    : 'When users submit their TrxID after sending money via bKash/Nagad, requests will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-950/50">
+                      <th className="py-3 px-4 rounded-l-xl">
+                        {lang === 'bn' ? 'ইউজার তথ্য' : 'User'}
+                      </th>
+                      <th className="py-3 px-4">
+                        {lang === 'bn' ? 'মাধ্যম ও পরিমাণ' : 'Method & Fee'}
+                      </th>
+                      <th className="py-3 px-4">
+                        {lang === 'bn' ? 'প্রেরক ফোন নাম্বার' : 'Sender Phone'}
+                      </th>
+                      <th className="py-3 px-4">
+                        {lang === 'bn' ? 'ট্রানজেকশন আইডি (TrxID)' : 'TrxID'}
+                      </th>
+                      <th className="py-3 px-4">
+                        {lang === 'bn' ? 'জমা দেওয়ার তারিখ' : 'Submitted Date'}
+                      </th>
+                      <th className="py-3 px-4">
+                        {lang === 'bn' ? 'বর্তমান স্ট্যাটাস' : 'Status'}
+                      </th>
+                      <th className="py-3 px-4 text-right rounded-r-xl">
+                        {lang === 'bn' ? 'অ্যাকশন (Approve / Reject)' : 'Actions'}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-xs text-slate-300">
+                    {filteredPaymentRequests.map(req => {
+                      const isPending = req.status === 'pending';
+                      const isApproved = req.status === 'approved';
+                      const isRejected = req.status === 'rejected';
+
+                      return (
+                        <tr key={req.id} className="hover:bg-slate-800/40 transition group">
+                          {/* 1. User Name & Email */}
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-white">{req.userName}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">{req.userEmailOrPhone}</div>
+                            <div className="text-[10px] text-slate-600 font-mono mt-0.5">UID: {req.userId.slice(0, 10)}...</div>
+                          </td>
+
+                          {/* 2. Method & Amount */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold uppercase ${
+                                req.method === 'bkash' 
+                                  ? 'bg-pink-600/20 text-pink-300 border border-pink-500/30' 
+                                  : 'bg-orange-600/20 text-orange-300 border border-orange-500/30'
+                              }`}>
+                                {req.method === 'bkash' ? 'bKash (বিকাশ)' : 'Nagad (নগদ)'}
+                              </span>
+                              <span className="font-bold text-amber-300 font-mono">১০০ ৳</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 mt-1">
+                              To: <span className="font-mono text-cyan-300">{req.recipientNumber || '01734211584'}</span>
+                            </div>
+                          </td>
+
+                          {/* 3. Sender Phone */}
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-200">
+                            <div className="flex items-center gap-1.5">
+                              <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              <span>{req.senderPhone}</span>
+                              <button
+                                onClick={() => handleCopy(req.senderPhone, `phone-${req.id}`)}
+                                className="text-slate-500 hover:text-slate-300 cursor-pointer"
+                                title="Copy Sender Phone"
+                              >
+                                {copiedId === `phone-${req.id}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* 4. TrxID */}
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-cyan-300 text-sm bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 tracking-wider">
+                                {req.trxId}
+                              </span>
+                              <button
+                                onClick={() => handleCopy(req.trxId, `trx-${req.id}`)}
+                                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                                title="Copy TrxID"
+                              >
+                                {copiedId === `trx-${req.id}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* 5. Date */}
+                          <td className="py-3.5 px-4 text-slate-400">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              <span>{formatDate(req.submittedAt)}</span>
+                            </div>
+                          </td>
+
+                          {/* 6. Status Badge */}
+                          <td className="py-3.5 px-4">
+                            {isPending && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>{lang === 'bn' ? 'অপেক্ষমাণ (Pending)' : 'Pending'}</span>
+                              </span>
+                            )}
+                            {isApproved && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                <span>{lang === 'bn' ? 'অনুমোদিত (Approved)' : 'Approved'}</span>
+                              </span>
+                            )}
+                            {isRejected && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
+                                <XCircle className="w-3 h-3 text-rose-400" />
+                                <span>{lang === 'bn' ? 'বাতিলকৃত (Rejected)' : 'Rejected'}</span>
+                              </span>
+                            )}
+                            {req.adminNote && (
+                              <div className="text-[10px] text-slate-400 mt-1 italic">
+                                Note: {req.adminNote}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 7. Actions */}
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Approve Button */}
+                              {isPending && onApprovePaymentRequest && (
+                                <button
+                                  onClick={() => handleApprove(req)}
+                                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs transition shadow-md shadow-emerald-500/20 cursor-pointer flex items-center gap-1"
+                                  title={lang === 'bn' ? 'অ্যাপ্রুভ করে আজীবন এক্সেস চালু করুন' : 'Approve & Unlock Lifetime'}
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5 stroke-[2.5]" />
+                                  <span>{lang === 'bn' ? 'অ্যাপ্রুভ' : 'Approve'}</span>
+                                </button>
+                              )}
+
+                              {/* Reject Button */}
+                              {isPending && onRejectPaymentRequest && (
+                                <button
+                                  onClick={() => handleOpenRejectModal(req)}
+                                  className="px-2.5 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-800/80 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                                  title={lang === 'bn' ? 'রিকোয়েস্ট বাতিল করুন' : 'Reject request'}
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>{lang === 'bn' ? 'রিজেক্ট' : 'Reject'}</span>
+                                </button>
+                              )}
+
+                              {/* Re-approve if rejected */}
+                              {isRejected && onApprovePaymentRequest && (
+                                <button
+                                  onClick={() => handleApprove(req)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 text-[11px] font-bold cursor-pointer"
+                                >
+                                  {lang === 'bn' ? 'পুনরায় অ্যাপ্রুভ' : 'Re-Approve'}
+                                </button>
+                              )}
+
+                              {/* Delete Record Button */}
+                              {onDeletePaymentRequest && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(lang === 'bn' ? 'এই পেমেন্ট রেকর্ডটি মুছে ফেলতে চান?' : 'Delete this payment record?')) {
+                                      onDeletePaymentRequest(req.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition cursor-pointer"
+                                  title="Delete record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
       </main>
 
       {/* --- MODAL 1: USER DETAILS MODAL --- */}
@@ -1627,6 +2123,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 5: REJECT PAYMENT REQUEST MODAL --- */}
+      {rejectingRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-rose-900/40 w-full max-w-md rounded-3xl p-6 shadow-2xl relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-950 border border-rose-800 text-rose-400 flex items-center justify-center shrink-0">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {lang === 'bn' ? 'পেমেন্ট রিকোয়েস্ট বাতিল করবেন?' : 'Reject Payment Request?'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {rejectingRequest.userName} • TrxID: {rejectingRequest.trxId}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              <div className="text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">প্রেরক ফোন:</span>
+                  <span className="font-mono text-white font-bold">{rejectingRequest.senderPhone}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">মাধ্যম ও ফি:</span>
+                  <span className="font-bold text-amber-300">{rejectingRequest.method.toUpperCase()} • ১০০ ৳</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">TrxID:</span>
+                  <span className="font-mono text-cyan-300 font-bold">{rejectingRequest.trxId}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {lang === 'bn' ? 'বাতিলের কারণ (ইউজারের নোটিশে দেখানো হবে):' : 'Rejection Reason:'}
+                </label>
+                <input
+                  type="text"
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  placeholder={lang === 'bn' ? 'যেমন: TrxID সঠিক পাওয়া যায়নি' : 'Reason for rejection'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRejectingRequest(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 cursor-pointer"
+              >
+                {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition shadow-lg shadow-rose-600/20 cursor-pointer flex items-center gap-1.5"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>{lang === 'bn' ? 'হ্যাঁ, বাতিল (Reject) করুন' : 'Confirm Reject'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

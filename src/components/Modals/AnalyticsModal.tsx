@@ -93,8 +93,6 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
   const [trendView, setTrendView] = useState<'cumulative' | 'daily'>('cumulative');
   const [activeTab, setActiveTab] = useState<'trends' | 'categories'>('trends');
 
-  if (!isOpen) return null;
-
   const activeFiles = useMemo(() => files.filter(f => !f.inTrash && !f.isFolder), [files]);
 
   const formatBytes = (bytes: number) => {
@@ -233,6 +231,8 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
 
   // Top category
   const topCategory = categoryData[0];
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-5 animate-in fade-in">

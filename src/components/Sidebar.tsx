@@ -272,10 +272,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
                 title={
                   trial.isLifetime 
-                    ? (lang === 'bn' ? 'আজীবন মেম্বারশিপ আনলকড (VIP)' : 'Lifetime Membership Unlocked')
+                    ? (lang === 'bn' ? 'আজীবন মেম্বারশিপ আনলকড (VIP) • আর কখনো টাকা দেওয়া লাগবে না' : 'Lifetime Membership Unlocked')
                     : trial.isExpired
-                    ? (lang === 'bn' ? 'মেয়াদ শেষ! ১০০ টাকা বিকাশ বা নগদে সেন্ড মানি করুন' : 'Trial Expired! Send 100 Tk')
-                    : (lang === 'bn' ? `৩০ দিন ট্রায়ালের ${toBengaliDigits(trial.remainingDays)} দিন বাকি। ১০০ টাকা দিয়ে আজীবন আনলক করুন` : `${trial.remainingDays} days remaining`)
+                    ? (lang === 'bn' ? 'মেয়াদ শেষ! ১০০ টাকা দিলে জীবনের জন্য আর দেওয়া লাগবে না' : 'Trial Expired! Send 100 Tk once for lifetime access')
+                    : (lang === 'bn' ? `৩০ দিন ট্রায়ালের ${toBengaliDigits(trial.remainingDays)} দিন বাকি। ১০০ টাকা দিলে জীবনের জন্য আর দেওয়া লাগবে না` : `${trial.remainingDays} days remaining • 100 Tk Lifetime`)
                 }
               >
                 <div className="flex items-center gap-2 min-w-0">

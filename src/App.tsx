@@ -9,7 +9,8 @@ import {
   AdminCredentials,
   ClipboardState,
   SiteSettings,
-  DEFAULT_SITE_SETTINGS
+  DEFAULT_SITE_SETTINGS,
+  PaymentRequest
 } from './types/storage';
 import { 
   getAllStoredFiles, 
@@ -39,7 +40,11 @@ import {
   isQuotaExceeded,
   subscribeQuotaExceeded,
   getDeletedUserIds,
-  recordDeletedUserId
+  recordDeletedUserId,
+  savePaymentRequestToFirestore,
+  loadPaymentRequestsFromFirestore,
+  updatePaymentRequestStatusInFirestore,
+  deletePaymentRequestFromFirestore
 } from './services/firebase';
 import { isSameEmailOrPhone } from './utils/accountValidation';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
@@ -96,9 +101,19 @@ const STORAGE_SESSION_KEY = 'bashar_1000gb_active_uid';
 const STORAGE_ADMIN_CREDS_KEY = 'bashar_1000gb_admin_creds';
 const STORAGE_ADMIN_SESSION_KEY = 'bashar_1000gb_admin_session';
 const STORAGE_SITE_SETTINGS_KEY = 'bashar_site_settings';
+const STORAGE_PAYMENT_REQUESTS_KEY = 'bashar_payment_requests';
 
 export default function App() {
   const [lang, setLang] = useState<'bn' | 'en'>('bn');
+
+  // Payment Requests state for manual TrxID submissions
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_PAYMENT_REQUESTS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
 
   // Global Website Settings (Branding, Logo, Name, Subtitle, YouTube Channel)
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
@@ -342,6 +357,13 @@ export default function App() {
             saveAdminCredentialsToFirestore(DEFAULT_ADMIN).catch(() => {});
           }
         }
+
+        // Sync payment requests from Firestore
+        const cloudPayments = await loadPaymentRequestsFromFirestore();
+        if (cloudPayments && cloudPayments.length > 0) {
+          setPaymentRequests(cloudPayments);
+          localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(cloudPayments));
+        }
       } catch (err) {
         console.warn('Initial cloud sync notice:', err);
       }
@@ -468,12 +490,18 @@ export default function App() {
         setSiteSettings(cloudSettings);
         localStorage.setItem(STORAGE_SITE_SETTINGS_KEY, JSON.stringify(cloudSettings));
       }
+      const cloudPayments = await loadPaymentRequestsFromFirestore();
+      if (cloudPayments) {
+        setPaymentRequests(cloudPayments);
+        localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(cloudPayments));
+      }
     } catch (err) {
       console.error('Error refreshing cloud data:', err);
     }
   };
 
   const handleUpdateUsersList = (updated: UserAccount[]) => {
+    const prevMap = new Map(usersList.map(u => [u.id, u]));
     setUsersList(updated);
     localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updated));
     if (currentUser) {
@@ -482,10 +510,199 @@ export default function App() {
         setCurrentUser(matched);
       }
     }
-    // Background sync to Firestore
+    // Efficient background sync: only save users that are new or modified
     updated.forEach(u => {
-      saveUserToFirestore(u).catch(() => {});
+      const prev = prevMap.get(u.id);
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(u)) {
+        saveUserToFirestore(u).catch(() => {});
+      }
     });
+  };
+
+  // Manual TrxID Payment Request submission by User
+  const handleSubmitManualPaymentRequest = async (data: {
+    senderPhone: string;
+    trxId: string;
+    method: 'bkash' | 'nagad';
+  }) => {
+    if (!currentUser) return;
+
+    const newRequest: PaymentRequest = {
+      id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmailOrPhone: currentUser.emailOrPhone,
+      senderPhone: data.senderPhone,
+      trxId: data.trxId.toUpperCase(),
+      method: data.method,
+      amount: siteSettings.subscriptionFee || 100,
+      recipientNumber: siteSettings.bkashNumber || '01734211584',
+      status: 'pending',
+      submittedAt: new Date().toISOString()
+    };
+
+    const updatedRequests = [newRequest, ...paymentRequests.filter(r => r.trxId !== newRequest.trxId)];
+    setPaymentRequests(updatedRequests);
+    localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(updatedRequests));
+
+    const updatedUser: UserAccount = {
+      ...currentUser,
+      subscriptionRequestStatus: 'pending',
+      pendingTrxId: data.trxId.toUpperCase(),
+      pendingSenderPhone: data.senderPhone,
+      pendingMethod: data.method,
+      pendingDate: new Date().toISOString()
+    };
+
+    setCurrentUser(updatedUser);
+    const updatedUsers = usersList.map(u => u.id === updatedUser.id ? updatedUser : u);
+    setUsersList(updatedUsers);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+
+    try {
+      await savePaymentRequestToFirestore(newRequest);
+      await saveUserToFirestore(updatedUser);
+    } catch (err) {
+      console.warn('Payment Firestore save error:', err);
+    }
+
+    showToast(
+      lang === 'bn'
+        ? '✅ আপনার ১০০ টাকার TrxID অ্যাডমিন প্যানেলে জমা হয়েছে! অ্যাডমিন পর্যালোচনার পর আজীবন আনলক হবে।'
+        : '✅ TrxID submitted to Admin Panel! Lifetime access will be activated upon approval.',
+      'success'
+    );
+  };
+
+  // Approve Payment Request by Admin -> Lifetime Unlock
+  const handleApprovePaymentRequest = async (requestId: string, userId: string) => {
+    const req = paymentRequests.find(r => r.id === requestId);
+    const now = new Date().toISOString();
+
+    const updatedRequests = paymentRequests.map(r =>
+      r.id === requestId
+        ? { ...r, status: 'approved' as const, reviewedAt: now, reviewedBy: currentAdmin?.username || 'admin' }
+        : r
+    );
+    setPaymentRequests(updatedRequests);
+    localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(updatedRequests));
+
+    const targetUser = usersList.find(u => u.id === userId);
+    if (targetUser) {
+      const updatedUser: UserAccount = {
+        ...targetUser,
+        isLifetimeUnlocked: true,
+        subscriptionRequestStatus: 'approved',
+        subscriptionMethod: req?.method || 'bkash',
+        subscriptionTrxId: req?.trxId || 'ADMIN_APPROVED',
+        subscriptionDate: now
+      };
+
+      const updatedUsers = usersList.map(u => u.id === userId ? updatedUser : u);
+      setUsersList(updatedUsers);
+      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+
+      if (currentUser && currentUser.id === userId) {
+        setCurrentUser(updatedUser);
+      }
+
+      try {
+        await updatePaymentRequestStatusInFirestore(requestId, 'approved', currentAdmin?.username || 'admin');
+        await saveUserToFirestore(updatedUser);
+      } catch (err) {
+        console.warn('Approve Firestore error:', err);
+      }
+
+      showToast(
+        lang === 'bn'
+          ? `🎉 ${targetUser.name}-এর পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে! আজীবন এক্সেস চালু হলো।`
+          : `🎉 Payment approved for ${targetUser.name}! Lifetime unlocked.`,
+        'success'
+      );
+    }
+  };
+
+  // Reject Payment Request by Admin
+  const handleRejectPaymentRequest = async (requestId: string, userId: string, adminNote?: string) => {
+    const now = new Date().toISOString();
+
+    const updatedRequests = paymentRequests.map(r =>
+      r.id === requestId
+        ? { ...r, status: 'rejected' as const, reviewedAt: now, reviewedBy: currentAdmin?.username || 'admin', adminNote }
+        : r
+    );
+    setPaymentRequests(updatedRequests);
+    localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(updatedRequests));
+
+    const targetUser = usersList.find(u => u.id === userId);
+    if (targetUser) {
+      const updatedUser: UserAccount = {
+        ...targetUser,
+        subscriptionRequestStatus: 'rejected',
+        adminNote: adminNote || (lang === 'bn' ? 'TrxID সঠিক পাওয়া যায়নি।' : 'Invalid TrxID.')
+      };
+
+      const updatedUsers = usersList.map(u => u.id === userId ? updatedUser : u);
+      setUsersList(updatedUsers);
+      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+
+      if (currentUser && currentUser.id === userId) {
+        setCurrentUser(updatedUser);
+      }
+
+      try {
+        await updatePaymentRequestStatusInFirestore(requestId, 'rejected', currentAdmin?.username || 'admin', adminNote);
+        await saveUserToFirestore(updatedUser);
+      } catch (err) {
+        console.warn('Reject Firestore error:', err);
+      }
+
+      showToast(
+        lang === 'bn'
+          ? '⚠️ পেমেন্ট রিকোয়েস্ট বাতিল (Rejected) করা হয়েছে।'
+          : '⚠️ Payment request rejected.',
+        'error'
+      );
+    }
+  };
+
+  // Delete Payment Request
+  const handleDeletePaymentRequest = async (requestId: string) => {
+    const updated = paymentRequests.filter(r => r.id !== requestId);
+    setPaymentRequests(updated);
+    localStorage.setItem(STORAGE_PAYMENT_REQUESTS_KEY, JSON.stringify(updated));
+    try {
+      await deletePaymentRequestFromFirestore(requestId);
+    } catch {}
+    showToast(lang === 'bn' ? 'পেমেন্ট রেকর্ড মুছে ফেলা হয়েছে।' : 'Payment record deleted.');
+  };
+
+  // Direct Lifetime Unlock by Admin for any user
+  const handleDirectUnlockUser = async (userId: string) => {
+    const targetUser = usersList.find(u => u.id === userId);
+    if (!targetUser) return;
+    const now = new Date().toISOString();
+    const updatedUser: UserAccount = {
+      ...targetUser,
+      isLifetimeUnlocked: true,
+      subscriptionRequestStatus: 'approved',
+      subscriptionMethod: 'bkash',
+      subscriptionTrxId: 'ADMIN_MANUAL_UNLOCK',
+      subscriptionDate: now
+    };
+    const updatedUsers = usersList.map(u => u.id === userId ? updatedUser : u);
+    setUsersList(updatedUsers);
+    localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser(updatedUser);
+    }
+    await saveUserToFirestore(updatedUser);
+    showToast(
+      lang === 'bn'
+        ? `🎉 ${targetUser.name}-কে সরাসরি আজীবনের জন্য আনলক করা হয়েছে!`
+        : `🎉 ${targetUser.name} unlocked for lifetime!`,
+      'success'
+    );
   };
 
   // Seamless cross-browser and cross-device sync between local IndexedDB and Firestore Cloud
@@ -1442,11 +1659,16 @@ export default function App() {
         usersList={usersList}
         adminCredentials={adminCredentials}
         siteSettings={siteSettings}
+        paymentRequests={paymentRequests}
         onUpdateSiteSettings={handleUpdateSiteSettings}
         onUpdateUsersList={handleUpdateUsersList}
         onUpdateAdminCredentials={handleUpdateAdminCredentials}
         onDeleteUser={handleDeleteUserByAdmin}
         onDeleteAllUsers={handleDeleteAllUsersByAdmin}
+        onApprovePaymentRequest={handleApprovePaymentRequest}
+        onRejectPaymentRequest={handleRejectPaymentRequest}
+        onDeletePaymentRequest={handleDeletePaymentRequest}
+        onDirectUnlockUser={handleDirectUnlockUser}
         onLogoutAdmin={handleAdminLogout}
         onBackToApp={() => setAdminView('none')}
         onRefreshData={handleRefreshAdminData}
@@ -2064,6 +2286,7 @@ export default function App() {
           currentUser={currentUser}
           siteSettings={siteSettings}
           onUnlockLifetime={handleUnlockLifetime}
+          onSubmitManualPaymentRequest={handleSubmitManualPaymentRequest}
           lang={lang}
           isForceLocked={trialStatus.isExpired}
         />
