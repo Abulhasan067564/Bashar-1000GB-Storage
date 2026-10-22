@@ -32,8 +32,9 @@ function generateSmartFallbackReply(
     .replace(/[০-৯]/g, d => ({ '০':'0','১':'1','২':'2','৩':'3','৪':'4','৫':'5','৬':'6','৭':'7','৮':'8','৯':'9' }[d] || d))
     .replace(/[xX×]/g, '*')
     .replace(/[÷]/g, '/')
+    .replace(/[কত=?]/g, '')
     .trim();
-  const mathMatch = cleanMath.match(/^(\d+(?:\.\d+)?)\s*([\+\-\*\/])\s*(\d+(?:\.\d+)?)$/);
+  const mathMatch = cleanMath.match(/(\d+(?:\.\d+)?)\s*([\+\-\*\/])\s*(\d+(?:\.\d+)?)/);
   if (mathMatch) {
     const a = parseFloat(mathMatch[1]);
     const op = mathMatch[2];
@@ -45,27 +46,28 @@ function generateSmartFallbackReply(
     else if (op === '/') result = b !== 0 ? a / b : NaN;
 
     if (!isNaN(result)) {
+      const formattedResult = Number.isInteger(result) ? result.toString() : result.toFixed(2);
       if (isBn) {
-        return `🧮 **গণিতের সমাধান:**\n\n- হিসাব: \`${a} ${op} ${b}\`\n- **সঠিক ফলাফল:** **${result}**\n\n💡 আপনার যেকোনো গাণিতিক সমস্যা বা ফর্মুলার হিসাব আমি নিমিষেই সমাধান করতে পারি!`;
+        return `🧮 **গণিতের সঠিক সমাধান:**\n\n- হিসাব: \`${a} ${op} ${b}\`\n- **ফলাফল:** **${formattedResult}**\n\n💡 আপনার যেকোনো গাণিতিক সমীকরণ বা দৈনন্দিন হিসাবের সঠিক উত্তর দিতে আমি সদা প্রস্তুত!`;
       }
-      return `🧮 **Math Solution:**\n\n- Expression: \`${a} ${op} ${b}\`\n- **Result:** **${result}**\n\n💡 I can instantly calculate mathematical expressions and formulas!`;
+      return `🧮 **Accurate Math Solution:**\n\n- Expression: \`${a} ${op} ${b}\`\n- **Result:** **${formattedResult}**\n\n💡 I can solve your formulas and calculations instantly!`;
     }
   }
 
-  // 2. Greetings
-  if (q.includes('কেমন আছ') || q.includes('how are you') || q.includes('সালাম') || q.includes('assalamu') || q === 'hi' || q === 'hello' || q === 'ai' || q === 'এআই' || q.includes('নমস্কার')) {
+  // 2. Greetings & Islamic Manners (Never say নমস্কার, always give Salam)
+  if (q.includes('কেমন আছ') || q.includes('how are you') || q.includes('সালাম') || q.includes('assalamu') || q === 'hi' || q === 'hello' || q === 'ai' || q === 'এআই' || q.includes('নমস্কার') || q.includes('নমস্কার!')) {
     if (isBn) {
-      return `আলহামদুলিল্লাহ, আমি খুব ভালো আছি! 🌸\n\nআমি **বাশার ক্লাউড এআই অ্যাসিস্ট্যান্ট** (Gemini 3.8 Flash দ্বারা চালিত)। আপনার যেকোনো প্রশ্ন—হোক তা ১০০০ জিবি ক্লাউড ড্রাইভের ফাইল ব্যবস্থাপনা, ভল্ট সিকিউরিটি, কিংবা বিজ্ঞান, গণিত, কোডিং, সাধারণ জ্ঞান বা পড়াশোনা—আমি দ্রুত ও নিখুঁতভাবে উত্তর দিতে প্রস্তুত।\n\nআপনি কী জানতে চান বলুন?`;
+      return `وعليكم السلام ورحمة الله وبركاته (ওয়ালাইকুমুস সালাম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু) 🌸\n\nআলহামদুলিল্লাহ, আল্লাহর অশেষ রহমতে আমি খুব ভালো আছি!\n\nআমি **বাশার ক্লাউড এআই অ্যাসিস্ট্যান্ট** (Gemini 3.8 Flash দ্বারা চালিত)। ইসলামী আদব, শালীনতা ও আন্তরিকতার সাথে আপনার যেকোনো প্রশ্নের সঠিক ও দ্রুত উত্তর দিতে আমি প্রস্তুত।\n\n১০০০ জিবি ক্লাউড ড্রাইভের ফাইল স্টোরেজ, এনক্রিপশন ভল্ট, ১০০৳ আজীবন সাবস্ক্রিপশন, কিংবা বিজ্ঞান, গণিত, কোডিং বা সাধারণ জ্ঞান—আপনি কী জানতে চান বলুন? মাশাআল্লাহ, আমি আপনাকে সাহায্য করতে পেরে আনন্দিত হব!`;
     }
-    return `Hello! I am doing great, thank you! 🌟\n\nI am your **Bashar Cloud AI Assistant** (powered by Gemini 3.8 Flash). I can help you manage your 1000 GB secure cloud drive, explain features, and answer ANY question in coding, science, mathematics, literature, or daily productivity. How may I assist you today?`;
+    return `Assalamu Alaikum wa Rahmatullahi wa Barakatuhu (আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু) 🌟\n\nAlhamdulillah, by the grace of Almighty Allah, I am doing great! I am your **Bashar Cloud AI Assistant** (powered by Gemini 3.8 Flash). How may I assist you with your 1000 GB secure cloud storage, coding, or any knowledge inquiry today?`;
   }
 
-  // 3. 100 Taka Lifetime Membership rule
-  if (q.includes('১০০') || q.includes('100') || q.includes('টাকা') || q.includes('পেমেন্ট') || q.includes('বিকাশ') || q.includes('নগদ') || q.includes('fee') || q.includes('payment') || q.includes('lifetime') || q.includes('আজীবন')) {
+  // 3. 100 Taka Lifetime Membership rule (Pay once, unlocked forever on all websites & devices)
+  if (q.includes('১০০') || q.includes('100') || q.includes('টাকা') || q.includes('পেমেন্ট') || q.includes('বিকাশ') || q.includes('নগদ') || q.includes('fee') || q.includes('payment') || q.includes('lifetime') || q.includes('আজীবন') || q.includes('আনলক') || q.includes('লক')) {
     if (isBn) {
-      return `👑 **বাশার ড্রাইভ ১০০৳ আজীবন আনলক নিয়ম:**\n\n- **একবার পরিশোধ:** যেকোনো সময় বিকাশ বা নগদে **১০০ টাকা** সেন্ড মানি করুন।\n- **আজীবন ফ্রি:** একবার দিলে জীবনের জন্য আর কখনো ১ টাকাও দেওয়া লাগবে না!\n- **১০০০ জিবি ক্লাউড:** আজীবন ১০০০ জিবি হাই-স্পিড ক্লাউড স্টোরেজ আপনার থাকবে।\n- **সেন্ড মানি করার নিয়ম:** বিকাশ বা নগদ অ্যাপ থেকে **01734211584** নম্বরে ১০০ টাকা সেন্ড মানি করে প্রাপ্ত TrxID-টি সাবস্ক্রিপশন মডালে সাবমিট করলেই অ্যাডমিন যাচাই করে সাথে সাথে একাউন্ট আজীবনের জন্য আনলক করে দেবে।`;
+      return `👑 **বাশার ড্রাইভ ১০০৳ আজীবন আনলক নিয়ম (Lifetime VIP):**\n\nআলহামদুলিল্লাহ, আমাদের সিস্টেমে কোনো মাসিক বা বাৎসরিক ফি নেই:\n\n1. **একবার ১০০ টাকা পরিশোধ:** বিকাশ বা নগদ অ্যাপ থেকে পার্সোনাল নম্বর **01734211584**-এ ১০০ টাকা সেন্ড মানি করুন।\n2. **জীবনের জন্য আর দেওয়া লাগবে না:** ১০০ টাকা দেওয়ার পর থেকে আপনার অ্যাকাউন্ট আজীবনের জন্য স্থায়ীভাবে আনলক হয়ে যাবে। সারা জীবনেও আর কোনো টাকা দেওয়া লাগবে না!\n3. **অন্য ওয়েবসাইটে গিয়েও আনলক দেখাবে:** আপনি মোবাইল, কম্পিউটার কিংবা অন্য যেকোনো ব্রাউজার বা ওয়েবসাইটে গিয়ে লগইন করলেও আপনার অ্যাকাউন্ট সাথে সাথে 'আনলক আছে' (Lifetime VIP) বলবে এবং দেখাবে।\n4. **১০০০ জিবি ফুল এক্সেস:** আজীবন ১০০০ জিবি হাই-স্পিড ক্লাউড স্টোরেজ, এনক্রিপ্টেড ভল্ট এবং ফাস্ট ডাউনলোড সুবিধা উন্মুক্ত থাকবে।`;
     }
-    return `👑 **100 Tk Lifetime Access Guarantee:**\n\n- **Pay Once:** Send 100 Tk via bKash or Nagad to **01734211584**.\n- **Never Pay Again:** Pay once and you will NEVER have to pay again for life.\n- **1,000 GB Cloud Storage:** Permanent access with zero monthly or renewal fees!`;
+    return `👑 **100 Tk Lifetime Access Guarantee:**\n\n- **Pay Once:** Send 100 Tk once via bKash or Nagad to **01734211584**.\n- **Never Pay Again:** Pay once and you will NEVER have to pay again for life.\n- **Unlocked on All Websites & Devices:** Once unlocked, whenever you log in from any website, computer, or phone, your account will always be fully unlocked!`;
   }
 
   // 4. Bangladesh & General Knowledge
@@ -183,6 +185,13 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   // Rich context-aware system instruction
   const baseInstruction = systemInstruction || 
     `You are Bashar Cloud Assistant (বাশার ক্লাউড এআই অ্যাসিস্ট্যান্ট), an intelligent, highly capable, polite, and friendly AI assistant built into Bashar 1000GB Cloud Storage.
+
+CRITICAL ISLAMIC MANNERS & GREETING RULES (MANDATORY):
+1. ALWAYS greet the user with the complete Islamic Salam: "আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু" (Assalamu Alaikum wa Rahmatullahi wa Barakatuhu).
+2. NEVER use or say "নমস্কার" (Nomoshkar) under ANY circumstance.
+3. ALWAYS speak using Islamic language, modesty, and polite etiquette (e.g., আলহামদুলিল্লাহ, মাশাআল্লাহ, ইনশাআল্লাহ, জাযাকাল্লাহু খাইরান, সুবহানাল্লাহ).
+4. If asked about subscription or locking, clearly explain: "১০০ টাকা বিকাশ বা নগদে একবার পরিশোধ করলে সারাজীবনের জন্য আনলক হয়ে যাবে, জীবনে আর কখনো ১ টাকাও দেওয়া লাগবে না। অন্য যেকোনো ওয়েবসাইট বা ডিভাইসে গেলেও স্বয়ংক্রিয়ভাবে দেখাবে আনলক আছে।"
+
 Your capabilities:
 1. Answer ANY question asked by the user beautifully, accurately, and thoroughly (general knowledge, coding, mathematics, science, writing, daily tips, and advice).
 2. Deeply understand and guide on Bashar 1000GB Cloud Storage features: 1000 GB cloud quota, single & bulk upload, folder organization, fast zip archive downloads, AES encrypted vault, secret name password recovery, and recycle bin trash management.

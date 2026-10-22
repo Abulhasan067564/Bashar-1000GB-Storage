@@ -33,6 +33,7 @@ import {
   Calculator
 } from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
+import { BrandLogo } from './BrandLogo';
 
 interface AuthScreenProps {
   usersList: UserAccount[];
@@ -128,15 +129,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       // 1. First look in local users list
       let user = usersList.find(u => isSameEmailOrPhone(u.emailOrPhone, inputClean));
 
-      // 2. If not found locally (e.g. account created on another computer/browser/phone), check Firestore Cloud!
-      if (!user) {
+      // 2. Cross-device and cross-website Cloud lookup: check Firestore for freshest data & lifetime status
+      try {
         const cloudUser = await findUserInFirestore(inputClean);
         if (cloudUser) {
-          user = cloudUser;
-          // Merge to local usersList and cache so this device now knows about it
-          const updated = [...usersList.filter(u => u.id !== cloudUser.id), cloudUser];
+          if (user) {
+            user = {
+              ...user,
+              ...cloudUser,
+              isLifetimeUnlocked: Boolean(cloudUser.isLifetimeUnlocked || user.isLifetimeUnlocked)
+            };
+          } else {
+            user = cloudUser;
+          }
+          const updated = [...usersList.filter(u => u.id !== user!.id), user];
           onUpdateUsersList(updated);
         }
+      } catch (e) {
+        console.warn('Notice syncing user from cloud during login:', e);
       }
 
       if (!user) {
@@ -319,34 +329,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       {/* Top Header */}
       <header className="relative z-10 px-6 py-4 flex items-center justify-between border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          {siteSettings?.siteLogoUrl ? (
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-cyan-400/50 shadow-lg shadow-cyan-500/20 bg-slate-900 shrink-0">
-              <img
-                src={siteSettings.siteLogoUrl}
-                alt={siteSettings.siteName}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20 shrink-0">
-              <Cloud className="w-6 h-6 stroke-[2.5]" />
-            </div>
-          )}
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xl font-black tracking-tight text-white">
-                {siteSettings?.siteName || 'Bashar'}
-              </span>
-              <span className="px-1.5 py-0.5 text-xs font-black tracking-wide rounded-md bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950 uppercase shadow-sm">
-                {siteSettings?.siteBadge || '1000GB'}
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              {lang === 'bn' ? (siteSettings?.taglineBn || '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট') : (siteSettings?.taglineEn || '1 TB Ultra-Fast Cloud Vault')}
-            </p>
-          </div>
-        </div>
+        <BrandLogo
+          customLogoUrl={siteSettings?.siteLogoUrl}
+          siteName={siteSettings?.siteName || 'Bashar'}
+          badgeText={siteSettings?.siteBadge || '1000GB'}
+          subtitle={lang === 'bn' ? (siteSettings?.taglineBn || '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট') : (siteSettings?.taglineEn || '1 TB Ultra-Fast Cloud Vault')}
+          size="md"
+          showText={true}
+        />
 
         <div className="flex items-center gap-2">
           {onOpenCalculator && (

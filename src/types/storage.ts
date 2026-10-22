@@ -146,3 +146,19 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
 export type ViewMode = 'grid' | 'list';
 export type ActiveTab = 'all' | 'starred' | 'shared' | 'vault' | 'trash';
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: string;
+  modelUsed?: string;
+  isFallback?: boolean;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}

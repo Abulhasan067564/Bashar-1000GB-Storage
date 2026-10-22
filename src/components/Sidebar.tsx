@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
+import { BrandLogo } from './BrandLogo';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -90,10 +91,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Mobile Drawer Header */}
           {isMobileOpen && (
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 md:hidden">
-              <span className="text-xs font-bold text-white flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-                <span>{siteSettings?.siteName || 'বাশার ড্রাইভ'}</span>
-              </span>
+              <BrandLogo
+                customLogoUrl={siteSettings?.siteLogoUrl}
+                siteName={siteSettings?.siteName || 'বাশার ড্রাইভ'}
+                badgeText={siteSettings?.siteBadge || '1000GB'}
+                size="sm"
+                showText={true}
+              />
               <button 
                 onClick={onCloseMobile}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800 cursor-pointer"
@@ -311,10 +315,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <div className="flex items-center gap-2.5">
                   <Bot className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition" />
-                  <span>{lang === 'bn' ? 'AI চ্যাট' : 'AI Chat'}</span>
+                  <span>{lang === 'bn' ? 'AI চ্যাট পেজ' : 'AI Chat Studio'}</span>
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  Gemini
+                  Gemini 3.8
                 </span>
               </button>
             )}

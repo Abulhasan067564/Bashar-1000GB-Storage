@@ -45,9 +45,42 @@ export function saveStoredFilesBackup(files: StorageFile[]): void {
   }
 }
 
+const STORAGE_DELETED_FILE_IDS_KEY = 'bashar_deleted_file_ids_v2';
+
+// Persistent Tombstone for permanently deleted files so sync never resurrects them
+export function getDeletedFileIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_DELETED_FILE_IDS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+export function recordDeletedFileIds(ids: string[]): void {
+  if (ids.length === 0) return;
+  try {
+    const existing = new Set(getDeletedFileIds());
+    ids.forEach(id => existing.add(id));
+    localStorage.setItem(STORAGE_DELETED_FILE_IDS_KEY, JSON.stringify(Array.from(existing)));
+  } catch {}
+}
+
+export function unrecordDeletedFileIds(ids: string[]): void {
+  if (ids.length === 0) return;
+  try {
+    const existing = new Set(getDeletedFileIds());
+    ids.forEach(id => existing.delete(id));
+    localStorage.setItem(STORAGE_DELETED_FILE_IDS_KEY, JSON.stringify(Array.from(existing)));
+  } catch {}
+}
+
 // Synchronous and immediate user-specific file retrieval for instant zero-wait login
 export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): StorageFile[] {
   const fileMap = new Map<string, StorageFile>();
+  const deletedIdSet = new Set(getDeletedFileIds());
 
   // 1. Check user-specific localStorage cache if userId provided
   if (userId) {
@@ -56,7 +89,11 @@ export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): St
       if (userRaw) {
         const parsed = JSON.parse(userRaw);
         if (Array.isArray(parsed)) {
-          parsed.forEach(f => fileMap.set(f.id, f));
+          parsed.forEach(f => {
+            if (f && f.id && !deletedIdSet.has(f.id)) {
+              fileMap.set(f.id, f);
+            }
+          });
         }
       }
       const cloudRaw = localStorage.getItem(`bashar_cloud_files_${userId}`);
@@ -64,8 +101,10 @@ export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): St
         const parsedCloud = JSON.parse(cloudRaw);
         if (Array.isArray(parsedCloud)) {
           parsedCloud.forEach(f => {
-            const existing = fileMap.get(f.id);
-            fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+            if (f && f.id && !deletedIdSet.has(f.id)) {
+              const existing = fileMap.get(f.id);
+              fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+            }
           });
         }
       }
@@ -81,8 +120,10 @@ export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): St
         const parsed = JSON.parse(phoneRaw);
         if (Array.isArray(parsed)) {
           parsed.forEach(f => {
-            const existing = fileMap.get(f.id);
-            fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+            if (f && f.id && !deletedIdSet.has(f.id)) {
+              const existing = fileMap.get(f.id);
+              fileMap.set(f.id, { ...f, ...existing, dataUrl: existing?.dataUrl || f.dataUrl });
+            }
           });
         }
       }
@@ -93,6 +134,8 @@ export function getUserFilesSync(userId?: string, userPhoneOrEmail?: string): St
   const backup = getStoredFilesBackup();
   const cleanPhone = userPhoneOrEmail?.trim();
   backup.forEach(f => {
+    if (deletedIdSet.has(f.id)) return;
+
     const matchesUser = 
       !f.ownerId || 
       f.ownerId === 'default' || 
@@ -288,36 +331,13 @@ export async function saveMultipleStoredFiles(files: StorageFile[]): Promise<voi
 }
 
 export async function deleteStoredFile(id: string): Promise<void> {
-  // 1. Delete from localStorage backup
-  const backup = getStoredFilesBackup();
-  const deletedFile = backup.find(f => f.id === id);
-  const filtered = backup.filter(f => f.id !== id);
-  saveStoredFilesBackup(filtered);
-
-  if (deletedFile?.ownerId && deletedFile.ownerId !== 'default') {
-    const userFiles = filtered.filter(f => f.ownerId === deletedFile.ownerId);
-    saveUserFilesCache(deletedFile.ownerId, userFiles, deletedFile.ownerPhone);
-  }
-
-  // 2. Delete from IndexedDB
-  try {
-    const db = await openDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_FILES, 'readwrite');
-      const store = tx.objectStore(STORE_FILES);
-      store.delete(id);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  } catch (err) {
-    console.warn('IndexedDB delete notice:', err);
-  }
+  await deleteMultipleStoredFiles([id]);
 }
 
 export async function deleteMultipleStoredFiles(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const idSet = new Set(ids);
+  recordDeletedFileIds(ids);
 
   // 1. Delete from localStorage backup
   const backup = getStoredFilesBackup();
@@ -325,14 +345,26 @@ export async function deleteMultipleStoredFiles(ids: string[]): Promise<void> {
   const filtered = backup.filter(f => !idSet.has(f.id));
   saveStoredFilesBackup(filtered);
 
-  const affectedOwners = new Set<string>();
-  deletedFiles.forEach(f => {
-    if (f.ownerId && f.ownerId !== 'default') affectedOwners.add(f.ownerId);
-  });
-  affectedOwners.forEach(ownerId => {
-    const userFiles = filtered.filter(f => f.ownerId === ownerId);
-    saveUserFilesCache(ownerId, userFiles);
-  });
+  // Also scan all localStorage keys to thoroughly purge any cache containing these IDs
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('bashar_user_files_') || key.startsWith('bashar_cloud_files_'))) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const cleaned = parsed.filter((f: any) => !idSet.has(f?.id));
+              if (cleaned.length !== parsed.length) {
+                localStorage.setItem(key, JSON.stringify(cleaned));
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch {}
 
   // 2. Delete from IndexedDB
   try {

@@ -21,7 +21,10 @@ import {
   saveMultipleStoredFiles, 
   deleteStoredFile, 
   deleteMultipleStoredFiles,
-  detectFileCategory
+  detectFileCategory,
+  getDeletedFileIds,
+  recordDeletedFileIds,
+  unrecordDeletedFileIds
 } from './services/indexedDbStorage';
 import { 
   saveUserToFirestore, 
@@ -317,15 +320,26 @@ export default function App() {
         // Sync users (excluding deleted accounts)
         const cloudUsers = await loadUsersFromFirestore();
         if (cloudUsers.length > 0) {
+          const deletedIds = new Set(getDeletedUserIds());
+          const validCloudUsers = cloudUsers.filter(u => !deletedIds.has(u.id));
+
           setUsersList(prev => {
             const map = new Map<string, UserAccount>();
-            const deletedIds = new Set(getDeletedUserIds());
             prev.filter(u => !deletedIds.has(u.id)).forEach(u => map.set(u.id, u));
-            cloudUsers.filter(u => !deletedIds.has(u.id)).forEach(u => map.set(u.id, u));
+            validCloudUsers.forEach(u => map.set(u.id, u));
             const merged = Array.from(map.values());
             localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(merged));
             return merged;
           });
+
+          // If active user is logged in, ensure their lifetime unlock status is synced immediately from Firestore
+          const activeSessionId = localStorage.getItem(STORAGE_SESSION_KEY);
+          if (activeSessionId) {
+            const matchedActive = validCloudUsers.find(u => u.id === activeSessionId);
+            if (matchedActive) {
+              setCurrentUser(matchedActive);
+            }
+          }
         } else {
           // Cloud has 0 users (all accounts wiped fresh as requested)
           setUsersList([]);
@@ -710,21 +724,28 @@ export default function App() {
     setIsSyncingFiles(true);
     try {
       const activePhoneOrEmail = (userEmailOrPhone || currentUser?.emailOrPhone || '').trim();
+      const deletedIdSet = new Set(getDeletedFileIds());
 
       // 1. Fetch locally cached files
       const localStored = await getAllStoredFiles();
       const userLocals = localStored.filter(f => 
-        !f.ownerId || 
+        !deletedIdSet.has(f.id) &&
+        (!f.ownerId || 
         f.ownerId === userId || 
         f.ownerId === 'default' || 
-        (activePhoneOrEmail && f.ownerPhone === activePhoneOrEmail)
+        (activePhoneOrEmail && f.ownerPhone === activePhoneOrEmail))
       );
       const fileMap = new Map<string, StorageFile>();
       // Preload current instant sync cache
       const currentSync = getUserFilesSync(userId, activePhoneOrEmail);
-      currentSync.forEach(f => fileMap.set(f.id, f));
+      currentSync.forEach(f => {
+        if (!deletedIdSet.has(f.id)) {
+          fileMap.set(f.id, f);
+        }
+      });
 
       userLocals.forEach(f => {
+        if (deletedIdSet.has(f.id)) return;
         if (!f.ownerId || f.ownerId === 'default') {
           f.ownerId = userId;
         }
@@ -743,6 +764,11 @@ export default function App() {
 
       // Check files from cloud
       for (const cf of cloudFiles) {
+        if (deletedIdSet.has(cf.id)) {
+          // Permanently deleted locally - wipe any lingering cloud duplicate
+          deleteFileFromFirestore(cf.id).catch(() => {});
+          continue;
+        }
         const local = fileMap.get(cf.id);
         if (!local) {
           // File uploaded from another browser/computer/phone!
@@ -761,15 +787,16 @@ export default function App() {
         }
       }
 
-      // If local files are not yet in Firestore, push them
+      // If local files are not yet in Firestore, push them (never push tombstoned files)
       userLocals.forEach(lf => {
+        if (deletedIdSet.has(lf.id)) return;
         const cloudMatch = cloudFiles.find(cf => cf.id === lf.id);
         if (!cloudMatch) {
           filesToPushToCloud.push(lf);
         }
       });
 
-      const mergedFiles = Array.from(fileMap.values());
+      const mergedFiles = Array.from(fileMap.values()).filter(f => !deletedIdSet.has(f.id));
       // Sort newest first
       mergedFiles.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
       
@@ -820,8 +847,10 @@ export default function App() {
   const handleLoginSuccess = async (user: UserAccount) => {
     // 1. INSTANTLY populate files synchronously BEFORE or TOGETHER with setCurrentUser
     const immediateFiles = getUserFilesSync(user.id, user.emailOrPhone);
-    if (immediateFiles.length > 0) {
-      setFiles(immediateFiles);
+    const deletedIdSet = new Set(getDeletedFileIds());
+    const validImmediate = immediateFiles.filter(f => !deletedIdSet.has(f.id));
+    if (validImmediate.length > 0) {
+      setFiles(validImmediate);
     }
 
     setCurrentUser(user);
@@ -836,18 +865,23 @@ export default function App() {
     // Fast IndexedDB hydration (<10ms)
     getAllStoredFiles().then(stored => {
       const userLocals = stored.filter(f => 
-        !f.ownerId || 
+        !deletedIdSet.has(f.id) &&
+        (!f.ownerId || 
         f.ownerId === user.id || 
         f.ownerId === 'default' || 
-        (user.emailOrPhone && f.ownerPhone === user.emailOrPhone)
+        (user.emailOrPhone && f.ownerPhone === user.emailOrPhone))
       );
       if (userLocals.length > 0) {
         setFiles(prev => {
           const map = new Map<string, StorageFile>();
-          prev.forEach(f => map.set(f.id, f));
+          prev.forEach(f => {
+            if (!deletedIdSet.has(f.id)) map.set(f.id, f);
+          });
           userLocals.forEach(f => {
-            const ex = map.get(f.id);
-            map.set(f.id, { ...ex, ...f, dataUrl: f.dataUrl || ex?.dataUrl });
+            if (!deletedIdSet.has(f.id)) {
+              const ex = map.get(f.id);
+              map.set(f.id, { ...ex, ...f, dataUrl: f.dataUrl || ex?.dataUrl });
+            }
           });
           const merged = Array.from(map.values()).sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
           saveUserFilesCache(user.id, merged, user.emailOrPhone);
@@ -1334,9 +1368,16 @@ export default function App() {
 
     if (file.inTrash) {
       // 1. In Recycle Bin: PERMANENT DELETE FOREVER ("সারা জীবনের জন্য ডিলিট")
+      recordDeletedFileIds(ids);
       await deleteMultipleStoredFiles(ids);
       ids.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
-      setFiles(prev => prev.filter(f => !ids.includes(f.id)));
+      setFiles(prev => {
+        const updated = prev.filter(f => !ids.includes(f.id));
+        if (currentUser) {
+          saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+        }
+        return updated;
+      });
       showToast(
         lang === 'bn'
           ? (file.isFolder 
@@ -1350,7 +1391,13 @@ export default function App() {
       const updatedFiles = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: true, deletedAt: now }));
       await saveMultipleStoredFiles(updatedFiles);
       updatedFiles.forEach(f => saveFileToFirestore(f).catch(() => {}));
-      setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f));
+      setFiles(prev => {
+        const updated = prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f);
+        if (currentUser) {
+          saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+        }
+        return updated;
+      });
       showToast(
         lang === 'bn'
           ? (file.isFolder
@@ -1375,9 +1422,16 @@ export default function App() {
 
     if (activeTab === 'trash') {
       // Permanent batch delete forever from Recycle Bin
+      recordDeletedFileIds(ids);
       await deleteMultipleStoredFiles(ids);
       ids.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
-      setFiles(prev => prev.filter(f => !ids.includes(f.id)));
+      setFiles(prev => {
+        const updated = prev.filter(f => !ids.includes(f.id));
+        if (currentUser) {
+          saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+        }
+        return updated;
+      });
       showToast(
         lang === 'bn' 
           ? `${ids.length} টি ফাইল সারা জীবনের জন্য স্থায়ীভাবে মুছে ফেলা হয়েছে!` 
@@ -1389,7 +1443,13 @@ export default function App() {
       const updatedFiles = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: true, deletedAt: now }));
       await saveMultipleStoredFiles(updatedFiles);
       updatedFiles.forEach(f => saveFileToFirestore(f).catch(() => {}));
-      setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f));
+      setFiles(prev => {
+        const updated = prev.map(f => ids.includes(f.id) ? { ...f, inTrash: true, deletedAt: now } : f);
+        if (currentUser) {
+          saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+        }
+        return updated;
+      });
       showToast(
         lang === 'bn' 
           ? `${ids.length} টি ফাইল রিসাইকেল বিনে পাঠানো হয়েছে!` 
@@ -1405,9 +1465,16 @@ export default function App() {
     const trashFiles = files.filter(f => f.inTrash);
     if (trashFiles.length === 0) return;
     const trashIds = trashFiles.map(f => f.id);
+    recordDeletedFileIds(trashIds);
     await deleteMultipleStoredFiles(trashIds);
     trashIds.forEach(fid => deleteFileFromFirestore(fid).catch(() => {}));
-    setFiles(prev => prev.filter(f => !f.inTrash));
+    setFiles(prev => {
+      const updated = prev.filter(f => !f.inTrash);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
     setSelectedFileIds(new Set());
     showToast(
       lang === 'bn' 
@@ -1419,10 +1486,17 @@ export default function App() {
   // Restore single file from trash
   const handleRestoreFile = async (file: StorageFile) => {
     const ids = getDescendantIds([file.id], files);
+    unrecordDeletedFileIds(ids);
     const restored = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
     await saveMultipleStoredFiles(restored);
     restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
-    setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f));
+    setFiles(prev => {
+      const updated = prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
     showToast(
       lang === 'bn' 
         ? (file.isFolder ? `"${file.name}" ফোল্ডার ড্রাইভে রিস্টোর করা হয়েছে।` : 'ফাইলটি ড্রাইভে রিস্টোর করা হয়েছে।') 
@@ -1435,10 +1509,17 @@ export default function App() {
     if (selectedFileIds.size === 0) return;
     const targetIds = Array.from(selectedFileIds);
     const ids = getDescendantIds(targetIds, files);
+    unrecordDeletedFileIds(ids);
     const restored = files.filter(f => ids.includes(f.id)).map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
     await saveMultipleStoredFiles(restored);
     restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
-    setFiles(prev => prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f));
+    setFiles(prev => {
+      const updated = prev.map(f => ids.includes(f.id) ? { ...f, inTrash: false, deletedAt: undefined } : f);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
     setSelectedFileIds(new Set());
     showToast(
       lang === 'bn' 
@@ -1451,10 +1532,18 @@ export default function App() {
   const handleRestoreAllTrash = async () => {
     const trashFiles = files.filter(f => f.inTrash);
     if (trashFiles.length === 0) return;
+    const trashIds = trashFiles.map(f => f.id);
+    unrecordDeletedFileIds(trashIds);
     const restored = trashFiles.map(f => ({ ...f, inTrash: false, deletedAt: undefined }));
     await saveMultipleStoredFiles(restored);
     restored.forEach(f => saveFileToFirestore(f).catch(() => {}));
-    setFiles(prev => prev.map(f => f.inTrash ? { ...f, inTrash: false, deletedAt: undefined } : f));
+    setFiles(prev => {
+      const updated = prev.map(f => f.inTrash ? { ...f, inTrash: false, deletedAt: undefined } : f);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
     setSelectedFileIds(new Set());
     showToast(lang === 'bn' ? 'সব ফাইল সফলভাবে রিস্টোর করা হয়েছে!' : 'All files restored!');
   };

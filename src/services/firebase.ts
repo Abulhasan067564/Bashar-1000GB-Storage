@@ -16,6 +16,7 @@ import {
   enableNetwork
 } from 'firebase/firestore';
 import { UserAccount, StorageFile, AdminCredentials, SiteSettings, PaymentRequest } from '../types/storage';
+import { getDeletedFileIds } from './indexedDbStorage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -208,8 +209,20 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
       createdAt: user.createdAt || new Date().toISOString(),
       status: user.status || 'active',
       role: user.role || 'user',
-      lastLoginAt: user.lastLoginAt || ''
-    });
+      lastLoginAt: user.lastLoginAt || '',
+      // Lifetime Unlock & 100 Taka Subscription fields (Cross-website persistence)
+      isLifetimeUnlocked: Boolean(user.isLifetimeUnlocked),
+      trialStartDate: user.trialStartDate || user.createdAt || new Date().toISOString(),
+      subscriptionMethod: user.subscriptionMethod || '',
+      subscriptionTrxId: user.subscriptionTrxId || '',
+      subscriptionDate: user.subscriptionDate || '',
+      subscriptionRequestStatus: user.subscriptionRequestStatus || 'none',
+      pendingTrxId: user.pendingTrxId || '',
+      pendingSenderPhone: user.pendingSenderPhone || '',
+      pendingMethod: user.pendingMethod || '',
+      pendingDate: user.pendingDate || '',
+      adminNote: user.adminNote || ''
+    }, { merge: true });
   } catch (error) {
     if (isQuotaError(error)) {
       setQuotaExceeded(true);
@@ -217,6 +230,33 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
     }
     handleFirestoreError(error, OperationType.WRITE, path);
   }
+}
+
+// Fetch single user directly by ID from Firestore (for cross-website login & status verification)
+export async function getUserFromFirestoreById(userId: string): Promise<UserAccount | null> {
+  if (!userId) return null;
+  const deletedIds = new Set(getDeletedUserIds());
+  if (deletedIds.has(userId)) return null;
+
+  try {
+    const snap = await getDoc(doc(db, 'users', userId));
+    if (snap.exists()) {
+      const u = snap.data() as UserAccount;
+      if (u && !deletedIds.has(u.id)) {
+        return {
+          ...u,
+          isLifetimeUnlocked: Boolean(u.isLifetimeUnlocked)
+        };
+      }
+    }
+  } catch (err) {
+    if (isQuotaError(err)) {
+      setQuotaExceeded(true);
+      return null;
+    }
+    console.warn('Notice fetching user by ID from Firestore:', err);
+  }
+  return null;
 }
 
 // Direct lookup for user in Firestore across any browser or device
@@ -236,7 +276,10 @@ export async function findUserInFirestore(identifier: string): Promise<UserAccou
         const normU = uEmailOrPhone.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
         const normInput = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
         if (normU === normInput || uEmailOrPhone === clean) {
-          found = u;
+          found = {
+            ...u,
+            isLifetimeUnlocked: Boolean(u.isLifetimeUnlocked)
+          };
         }
       }
     });
@@ -261,7 +304,10 @@ export async function loadUsersFromFirestore(): Promise<UserAccount[]> {
     snapshot.forEach((d) => {
       const u = d.data() as UserAccount;
       if (u && u.id && !deletedIds.has(u.id)) {
-        list.push(u);
+        list.push({
+          ...u,
+          isLifetimeUnlocked: Boolean(u.isLifetimeUnlocked)
+        });
       } else if (u && u.id && deletedIds.has(u.id)) {
         // Asynchronously clean up lingering deleted doc from Firestore
         deleteDoc(doc(db, 'users', u.id)).catch(() => {});
@@ -512,19 +558,22 @@ export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmai
 
     // Execute ALL Firestore queries concurrently in parallel for maximum speed
     const results = await Promise.allSettled(queries.map(q => getDocs(q)));
+    const deletedIdSet = new Set(getDeletedFileIds());
     results.forEach(res => {
       if (res.status === 'fulfilled') {
         res.value.forEach(d => {
           const file = d.data() as StorageFile;
-          if (file && file.id) {
+          if (file && file.id && !deletedIdSet.has(file.id)) {
             fileMap.set(file.id, file);
+          } else if (file && file.id && deletedIdSet.has(file.id)) {
+            deleteDoc(doc(db, 'files', file.id)).catch(() => {});
           }
         });
       }
     });
 
     const list = Array.from(fileMap.values());
-    if (userId && list.length > 0) {
+    if (userId) {
       try {
         localStorage.setItem(`bashar_cloud_files_${userId}`, JSON.stringify(list));
       } catch {}

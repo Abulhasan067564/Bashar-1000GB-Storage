@@ -200,18 +200,18 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {/* Trial / Lifetime Status Pill */}
           {trial.isLifetime ? (
-            <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-2xl p-4 text-emerald-200 text-xs flex items-center gap-3 shadow-lg shadow-emerald-950/30">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <div className="bg-emerald-950/70 border-2 border-emerald-500/60 rounded-2xl p-4 text-emerald-200 text-xs flex items-center gap-3 shadow-xl shadow-emerald-950/40">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               </div>
-              <div>
-                <span className="font-bold text-emerald-300 block text-sm">
-                  {lang === 'bn' ? '🎉 আজীবন মেম্বারশিপ সক্রিয়!' : '🎉 Lifetime Membership Active!'}
+              <div className="space-y-0.5">
+                <span className="font-black text-emerald-300 block text-sm">
+                  {lang === 'bn' ? '🎉 আজীবন আনলক আছে (Lifetime VIP Unlocked)!' : '🎉 Lifetime VIP Unlocked!'}
                 </span>
-                <span className="text-[11px] text-emerald-400/80">
+                <span className="text-[11px] text-emerald-200/90 leading-relaxed block">
                   {lang === 'bn'
-                    ? 'আপনার ১০০০ জিবি স্টোরেজ আজীবনের জন্য সক্রিয় আছে।'
-                    : '1,000 GB Cloud Drive is permanently unlocked.'}
+                    ? 'আপনার একাউন্ট আজীবনের জন্য আনলক আছে। ১০০ টাকা দেওয়ার পর থেকে স্থায়ীভাবে আনলক হয়েছে, জীবনে আর কখনো টাকা দেওয়া লাগবে না এবং অন্য যে কোনো ওয়েবসাইটে গিয়েও দেখালে বলবে আনলক আছে।'
+                    : 'Your 1000 GB account is permanently unlocked for life. Paid once, never pay again, and verified unlocked across all websites and devices.'}
                 </span>
               </div>
             </div>

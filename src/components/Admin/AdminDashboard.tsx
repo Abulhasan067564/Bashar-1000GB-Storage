@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { UserAccount, AdminCredentials, SiteSettings, PaymentRequest } from '../../types/storage';
 import { WebsiteSettingsModal } from './WebsiteSettingsModal';
+import { BrandLogo } from '../BrandLogo';
 
 const PRESET_LOGOS = [
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
@@ -548,19 +549,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="flex items-center justify-between gap-3">
           {/* Brand & Badge */}
           <div className="flex items-center gap-3">
-            {siteSettings?.siteLogoUrl ? (
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden border border-rose-500/50 shadow-lg shadow-rose-500/20 bg-slate-950 shrink-0">
-                <img
-                  src={siteSettings.siteLogoUrl}
-                  alt={siteSettings.siteName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-red-500 to-amber-500 text-slate-950 shadow-lg shadow-rose-500/20">
-                <ShieldCheck className="w-6 h-6 stroke-[2.5]" />
-              </div>
-            )}
+            <BrandLogo
+              customLogoUrl={siteSettings?.siteLogoUrl}
+              siteName={siteSettings?.siteName || 'Bashar'}
+              badgeText={siteSettings?.siteBadge || '1000GB'}
+              size="sm"
+              showText={false}
+            />
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-black tracking-tight text-white">

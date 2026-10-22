@@ -58,22 +58,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
            u.emailOrPhone.trim().toLowerCase() === cleanInput.toLowerCase()
     );
 
-    // 2. If not found locally, fast query Firestore directly
-    if (!user) {
-      setIsSubmitting(true);
-      try {
-        const cloudUser = await findUserInFirestore(cleanInput);
-        if (cloudUser) {
+    // 2. Query Firestore for cloud sync (or if not found locally)
+    try {
+      const cloudUser = await findUserInFirestore(cleanInput);
+      if (cloudUser) {
+        if (user) {
+          user = {
+            ...user,
+            ...cloudUser,
+            isLifetimeUnlocked: Boolean(cloudUser.isLifetimeUnlocked || user.isLifetimeUnlocked)
+          };
+        } else {
           user = cloudUser;
-          // Merge to local usersList
-          const updated = [...usersList.filter(u => u.id !== cloudUser.id), cloudUser];
-          onUpdateUsersList(updated);
         }
-      } catch (err) {
-        console.warn('Login lookup notice:', err);
-      } finally {
-        setIsSubmitting(false);
+        const updated = [...usersList.filter(u => u.id !== user!.id), user];
+        onUpdateUsersList(updated);
       }
+    } catch (err) {
+      console.warn('Login lookup notice:', err);
     }
 
     if (!user) {
