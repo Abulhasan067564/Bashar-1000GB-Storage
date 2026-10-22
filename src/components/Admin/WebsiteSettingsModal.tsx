@@ -37,6 +37,10 @@ interface WebsiteSettingsModalProps {
 
 const PRESET_SITE_LOGOS = [
   {
+    name: 'Bashar 1000GB Vault (Official)',
+    url: '/src/assets/images/bashar_brand_logo_1792665940482.jpg'
+  },
+  {
     name: 'Cyber Cloud',
     url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=200&auto=format&fit=crop&q=80'
   },

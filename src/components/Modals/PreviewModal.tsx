@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { StorageFile } from '../../types/storage';
 import { downloadSingleFile } from '../../services/zipService';
 import { decryptFileContent } from '../../services/cryptoService';
-import { X, Download, Share2, Lock, Unlock, Eye, FileText, Music, Video, Image as ImageIcon, ShieldAlert } from 'lucide-react';
+import { X, Download, Share2, Lock, Unlock, Eye, FileText, Music, Video, Image as ImageIcon, ShieldAlert, Wand2 } from 'lucide-react';
 
 interface PreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   file: StorageFile | null;
   onShareClick: (file: StorageFile) => void;
+  onEditImage?: (file: StorageFile) => void;
   lang: 'bn' | 'en';
 }
 
@@ -17,6 +18,7 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   onClose,
   file,
   onShareClick,
+  onEditImage,
   lang
 }) => {
   const [decryptionKey, setDecryptionKey] = useState('');
@@ -71,6 +73,19 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {file.category === 'image' && onEditImage && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditImage(file);
+                }}
+                className="px-2.5 py-1.5 bg-purple-950/70 hover:bg-purple-900 border border-purple-500/40 text-purple-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title={lang === 'bn' ? 'এআই দিয়ে এডিট করুন বা ইচ্ছামতো সাইজ দিন' : 'Edit & Resize Image'}
+              >
+                <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                <span className="hidden sm:inline">{lang === 'bn' ? 'এডিট ও সাইজ পরিবর্তন' : 'Edit & Resize'}</span>
+              </button>
+            )}
             <button
               onClick={() => onShareClick(file)}
               className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition"

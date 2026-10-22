@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+export const DEFAULT_BRAND_LOGO = '/src/assets/images/bashar_brand_logo_1792665940482.jpg';
 
 interface BrandLogoProps {
   customLogoUrl?: string;
@@ -21,6 +23,8 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
   showGlow = true
 }) => {
+  const [imgError, setImgError] = useState(false);
+
   const sizeMap = {
     sm: 'w-8 h-8',
     md: 'w-10 h-10',
@@ -29,6 +33,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   };
 
   const currentSizeClass = sizeMap[size] || sizeMap.md;
+  const activeLogoUrl = (customLogoUrl && customLogoUrl.trim()) ? customLogoUrl : DEFAULT_BRAND_LOGO;
 
   const emblem = (
     <div 
@@ -39,13 +44,15 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-cyan-500/40 via-sky-500/30 to-amber-500/30 blur-sm opacity-70 group-hover:opacity-100 transition duration-300 pointer-events-none" />
       )}
 
-      {customLogoUrl && customLogoUrl.trim() ? (
+      {!imgError && activeLogoUrl ? (
         <div className="relative w-full h-full rounded-2xl p-[1.5px] bg-gradient-to-tr from-cyan-400 via-sky-500 to-amber-400 shadow-lg shadow-cyan-500/25">
           <div className="w-full h-full rounded-[14px] overflow-hidden bg-slate-950 flex items-center justify-center">
             <img 
-              src={customLogoUrl} 
+              src={activeLogoUrl} 
               alt={siteName} 
               className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={() => setImgError(true)}
             />
           </div>
         </div>

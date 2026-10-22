@@ -44,6 +44,7 @@ import { WebsiteSettingsModal } from './WebsiteSettingsModal';
 import { BrandLogo } from '../BrandLogo';
 
 const PRESET_LOGOS = [
+  '/src/assets/images/bashar_brand_logo_1792665940482.jpg',
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
   'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
   'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150&auto=format&fit=crop&q=80',

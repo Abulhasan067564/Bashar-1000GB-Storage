@@ -23,7 +23,8 @@ import {
   ArrowLeft,
   ChevronRight,
   Video,
-  Mic
+  Mic,
+  Wand2
 } from 'lucide-react';
 
 interface ActionBarProps {
@@ -38,6 +39,7 @@ interface ActionBarProps {
   onOpenUpload: () => void;
   onOpenCreateFile: () => void;
   onOpenCreateFolder: () => void;
+  onOpenImageStudio?: () => void;
   onOpenScreenRecorder?: () => void;
   onOpenVoiceRecorder?: () => void;
   onOpenMoveModal: () => void;
@@ -72,6 +74,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenUpload,
   onOpenCreateFile,
   onOpenCreateFolder,
+  onOpenImageStudio,
   onOpenScreenRecorder,
   onOpenVoiceRecorder,
   onOpenMoveModal,
@@ -215,6 +218,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
               <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
             </button>
+
+            {onOpenImageStudio && (
+              <button
+                onClick={onOpenImageStudio}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 hover:text-purple-200 border border-purple-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+                title={lang === 'bn' ? 'এআই ইমেজ স্টুডিও: প্রম্পট দিয়ে ছবি তৈরি ও ইচ্ছামতো সাইজ দিন' : 'AI Image Studio: Create & Resize Any Size'}
+              >
+                <Wand2 className="w-3.5 h-3.5 text-purple-400" />
+                <span>{lang === 'bn' ? 'এআই ইমেজ' : 'AI Image'}</span>
+              </button>
+            )}
 
             {onOpenScreenRecorder && (
               <button

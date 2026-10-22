@@ -74,6 +74,7 @@ import { ScreenRecorderModal } from './components/Modals/ScreenRecorderModal';
 import { VoiceRecorderModal } from './components/Modals/VoiceRecorderModal';
 import { SubscriptionModal } from './components/Modals/SubscriptionModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
+import { ImageStudioModal } from './components/Modals/ImageStudioModal';
 import { getTrialStatus, getNextScreenRecordNumber, getNextVoiceRecordNumber, toBengaliDigits } from './utils/bengaliNaming';
 import { 
   Cloud, 
@@ -122,7 +123,13 @@ export default function App() {
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_SITE_SETTINGS_KEY);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed: SiteSettings = JSON.parse(saved);
+        if (!parsed.siteLogoUrl || !parsed.siteLogoUrl.trim()) {
+          parsed.siteLogoUrl = DEFAULT_SITE_SETTINGS.siteLogoUrl;
+        }
+        return parsed;
+      }
     } catch {}
     return DEFAULT_SITE_SETTINGS;
   });
@@ -252,6 +259,8 @@ export default function App() {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
+  const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
+  const [studioTargetImage, setStudioTargetImage] = useState<StorageFile | null>(null);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
@@ -352,6 +361,9 @@ export default function App() {
         // Sync site settings / branding from Firestore
         const cloudSettings = await loadSiteSettingsFromFirestore();
         if (cloudSettings) {
+          if (!cloudSettings.siteLogoUrl || !cloudSettings.siteLogoUrl.trim()) {
+            cloudSettings.siteLogoUrl = DEFAULT_SITE_SETTINGS.siteLogoUrl;
+          }
           setSiteSettings(cloudSettings);
           localStorage.setItem(STORAGE_SITE_SETTINGS_KEY, JSON.stringify(cloudSettings));
         }
@@ -1929,6 +1941,7 @@ export default function App() {
           onOpenVoiceRecorder={() => { setIsVoiceRecorderOpen(true); setIsMobileMenuOpen(false); }}
           onOpenSubscription={() => { setIsSubscriptionOpen(true); setIsMobileMenuOpen(false); }}
           onOpenChat={() => { setIsChatOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenImageStudio={() => { setStudioTargetImage(null); setIsImageStudioOpen(true); setIsMobileMenuOpen(false); }}
         />
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}
@@ -2007,6 +2020,7 @@ export default function App() {
               }
               setIsCreateFolderOpen(true);
             }}
+            onOpenImageStudio={() => { setStudioTargetImage(null); setIsImageStudioOpen(true); }}
             onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
             onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
             onOpenMoveModal={() => handleOpenMoveModal()}
@@ -2319,6 +2333,7 @@ export default function App() {
         onClose={() => setPreviewFile(null)}
         file={previewFile}
         onShareClick={(f) => { setPreviewFile(null); setShareFile(f); }}
+        onEditImage={(f) => { setStudioTargetImage(f); setIsImageStudioOpen(true); }}
         lang={lang}
       />
 
@@ -2390,6 +2405,20 @@ export default function App() {
         files={files}
         currentUser={currentUser}
         currentFolder={currentFolder}
+        lang={lang}
+      />
+
+      {/* AI Image Studio Modal (Create & Edit Any Size with gemini-nano-banana-2.1) */}
+      <ImageStudioModal
+        isOpen={isImageStudioOpen}
+        onClose={() => {
+          setIsImageStudioOpen(false);
+          setStudioTargetImage(null);
+        }}
+        onSaveToDrive={handleCreateFile}
+        existingFiles={files}
+        initialImage={studioTargetImage}
+        currentUser={currentUser}
         lang={lang}
       />
     </div>

@@ -15,7 +15,8 @@ import {
   Bot,
   Youtube,
   Clock,
-  X
+  X,
+  Wand2
 } from 'lucide-react';
 import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
 import { BrandLogo } from './BrandLogo';
@@ -39,6 +40,7 @@ interface SidebarProps {
   onOpenVoiceRecorder?: () => void;
   onOpenSubscription?: () => void;
   onOpenChat?: () => void;
+  onOpenImageStudio?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -59,7 +61,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenScreenRecorder,
   onOpenVoiceRecorder,
   onOpenSubscription,
-  onOpenChat
+  onOpenChat,
+  onOpenImageStudio
 }) => {
   const formatStorage = (bytes: number) => {
     const mb = bytes / (1024 * 1024);
@@ -191,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <h4 className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
               <span>{lang === 'bn' ? 'ইউটিলিটি টুলস' : 'Utility Tools'}</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/50">
-                7 Tools
+                8 Tools
               </span>
             </h4>
 
@@ -339,6 +342,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 YouTube
               </span>
             </a>
+
+            {/* 8. এআই ইমেজ স্টুডিও (AI Image Studio - Create & Edit Any Size) */}
+            {onOpenImageStudio && (
+              <button
+                onClick={onOpenImageStudio}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-purple-300 hover:bg-purple-950/40 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'এআই ইমেজ স্টুডিও (ছবি তৈরি, এডিট ও ইচ্ছামতো সাইজ)' : 'AI Image Studio (Custom Dimensions & Edit)'}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Wand2 className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'এআই ইমেজ স্টুডিও' : 'AI Image Studio'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  {lang === 'bn' ? 'সাইজ' : 'Any Size'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
