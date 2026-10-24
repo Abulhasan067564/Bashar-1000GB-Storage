@@ -21,7 +21,8 @@ import {
   FolderOpen,
   Move,
   Copy,
-  MoreVertical
+  MoreVertical,
+  Info
 } from 'lucide-react';
 
 interface FileCardProps {
@@ -33,6 +34,7 @@ interface FileCardProps {
   onShare: (file: StorageFile) => void;
   onDelete: (file: StorageFile) => void;
   onToggleStar: (file: StorageFile) => void;
+  onViewDetails?: (file: StorageFile) => void;
   onRestore?: (file: StorageFile) => void;
   onOpenFolder?: (folder: StorageFile) => void;
   onQuickMove?: (file: StorageFile) => void;
@@ -51,6 +53,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   onShare,
   onDelete,
   onToggleStar,
+  onViewDetails,
   onRestore,
   onOpenFolder,
   onQuickMove,
@@ -293,6 +296,17 @@ export const FileCard: React.FC<FileCardProps> = ({
                     <Download className="w-3.5 h-3.5" />
                   </button>
                 </>
+              )}
+
+              {onViewDetails && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onViewDetails(file); }}
+                  className="p-1.5 text-slate-400 hover:text-cyan-300 rounded-lg hover:bg-slate-800 transition"
+                  title={lang === 'bn' ? 'মেটাডাটা ও বিবরণ' : 'Details & Metadata'}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </button>
               )}
 
               <button

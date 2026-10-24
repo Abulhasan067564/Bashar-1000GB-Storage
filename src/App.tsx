@@ -74,7 +74,7 @@ import { ScreenRecorderModal } from './components/Modals/ScreenRecorderModal';
 import { VoiceRecorderModal } from './components/Modals/VoiceRecorderModal';
 import { SubscriptionModal } from './components/Modals/SubscriptionModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
-import { ImageStudioModal } from './components/Modals/ImageStudioModal';
+import { FileDetailsPanel } from './components/FileDetailsPanel';
 import { getTrialStatus, getNextScreenRecordNumber, getNextVoiceRecordNumber, toBengaliDigits } from './utils/bengaliNaming';
 import { 
   Cloud, 
@@ -259,10 +259,22 @@ export default function App() {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
-  const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
-  const [studioTargetImage, setStudioTargetImage] = useState<StorageFile | null>(null);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFileDetailsOpen, setIsFileDetailsOpen] = useState(false);
+  const [inspectedFileId, setInspectedFileId] = useState<string | null>(null);
+
+  // Active selected file for metadata side panel
+  const activeSelectedFile = useMemo(() => {
+    if (selectedFileIds.size === 1) {
+      const selectedId = Array.from(selectedFileIds)[0];
+      return files.find(f => f.id === selectedId) || null;
+    }
+    if (inspectedFileId) {
+      return files.find(f => f.id === inspectedFileId) || null;
+    }
+    return null;
+  }, [selectedFileIds, inspectedFileId, files]);
   
   // Status feedback
   const [isZipping, setIsZipping] = useState(false);
@@ -1344,6 +1356,7 @@ export default function App() {
         next.delete(id);
       } else {
         next.add(id);
+        setInspectedFileId(id);
       }
       return next;
     });
@@ -1941,7 +1954,6 @@ export default function App() {
           onOpenVoiceRecorder={() => { setIsVoiceRecorderOpen(true); setIsMobileMenuOpen(false); }}
           onOpenSubscription={() => { setIsSubscriptionOpen(true); setIsMobileMenuOpen(false); }}
           onOpenChat={() => { setIsChatOpen(true); setIsMobileMenuOpen(false); }}
-          onOpenImageStudio={() => { setStudioTargetImage(null); setIsImageStudioOpen(true); setIsMobileMenuOpen(false); }}
         />
 
         {/* Center / Right Content Area with Global Turbo Drag & Drop */}
@@ -2020,7 +2032,6 @@ export default function App() {
               }
               setIsCreateFolderOpen(true);
             }}
-            onOpenImageStudio={() => { setStudioTargetImage(null); setIsImageStudioOpen(true); }}
             onOpenScreenRecorder={() => setIsScreenRecorderOpen(true)}
             onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
             onOpenMoveModal={() => handleOpenMoveModal()}
@@ -2040,6 +2051,8 @@ export default function App() {
             sortBy={sortBy}
             onSortByChange={setSortBy}
             isZipping={isZipping}
+            isDetailsPanelOpen={isFileDetailsOpen}
+            onToggleDetailsPanel={() => setIsFileDetailsOpen(prev => !prev)}
             lang={lang}
           />
 
@@ -2198,6 +2211,7 @@ export default function App() {
                     onShare={setShareFile}
                     onDelete={handleDeleteFile}
                     onToggleStar={handleToggleStar}
+                    onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
                     onRestore={handleRestoreFile}
                     onOpenFolder={handleOpenFolder}
                     onQuickMove={handleOpenMoveModal}
@@ -2233,6 +2247,7 @@ export default function App() {
                         onShare={setShareFile}
                         onDelete={handleDeleteFile}
                         onToggleStar={handleToggleStar}
+                        onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
                         onRestore={handleRestoreFile}
                         onOpenFolder={handleOpenFolder}
                         onQuickMove={handleOpenMoveModal}
@@ -2248,6 +2263,27 @@ export default function App() {
             )}
           </div>
         </main>
+
+        {/* Collapsible File Metadata & Details Side Panel */}
+        <FileDetailsPanel
+          isOpen={isFileDetailsOpen}
+          onClose={() => setIsFileDetailsOpen(false)}
+          selectedFile={activeSelectedFile}
+          allFiles={files}
+          currentFolder={currentFolder}
+          onPreview={handlePreviewFile}
+          onDownload={handleDownloadFile}
+          onShare={setShareFile}
+          onDelete={handleDeleteFile}
+          onToggleStar={handleToggleStar}
+          onMoveCopy={handleOpenMoveModal}
+          onNavigateToFolder={(fId) => {
+            setCurrentFolderId(fId);
+            setActiveTab('all');
+          }}
+          isTrash={activeTab === 'trash'}
+          lang={lang}
+        />
       </div>
 
       {/* Modals */}
@@ -2333,7 +2369,6 @@ export default function App() {
         onClose={() => setPreviewFile(null)}
         file={previewFile}
         onShareClick={(f) => { setPreviewFile(null); setShareFile(f); }}
-        onEditImage={(f) => { setStudioTargetImage(f); setIsImageStudioOpen(true); }}
         lang={lang}
       />
 
@@ -2405,20 +2440,6 @@ export default function App() {
         files={files}
         currentUser={currentUser}
         currentFolder={currentFolder}
-        lang={lang}
-      />
-
-      {/* AI Image Studio Modal (Create & Edit Any Size with gemini-nano-banana-2.1) */}
-      <ImageStudioModal
-        isOpen={isImageStudioOpen}
-        onClose={() => {
-          setIsImageStudioOpen(false);
-          setStudioTargetImage(null);
-        }}
-        onSaveToDrive={handleCreateFile}
-        existingFiles={files}
-        initialImage={studioTargetImage}
-        currentUser={currentUser}
         lang={lang}
       />
     </div>

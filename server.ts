@@ -126,9 +126,9 @@ function generateSmartFallbackReply(
 
   // 10. Comprehensive General Fallback for ANY question
   if (isBn) {
-    return `✨ **আপনার প্রশ্নের বিশ্লেষণ ও উত্তর:**\n\nপ্রশ্ন: **"${userQuery}"**\n\nবাশার ক্লাউড এআই আপনার প্রশ্নের সমাধানে সর্বদা প্রস্তুত।\n\n- 💡 **মূল বিষয়:** আপনার বিষয়টি অত্যন্ত গুরুত্বপূর্ণ। সঠিক তথ্য ও পরিকল্পনা অনুযায়ী এগিয়ে যাওয়া বাঞ্ছনীয়।\n- 🔍 **পরামর্শ ও নির্দেশনা:** আপনি যদি এই বিষয়ে আরো সুনির্দিষ্ট তথ্য, গাণিতিক সমাধান, কোডিং বা বিস্তারিত ব্যাখ্যা পেতে চান, তবে আর একটু বিস্তারিত লিখুন।\n- 🚀 **সহায়তা:** বাশার ক্লাউড এআই যে কোনো জটিল প্রশ্নের সম্পূর্ণ ও সুন্দর সমাধান দিতে সক্ষম!\n\nপরবর্তী প্রশ্নটি এখনই লিখে পাঠান! 🌸`;
+    return `وعليكم السلام ورحمة الله وبركاته (ওয়ালাইকুমুস সালাম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু) 🌸\n\n✨ **আপনার প্রশ্নের বিশ্লেষণ ও উত্তর:**\n\nপ্রশ্ন: **"${userQuery}"**\n\nবাশার ক্লাউড এআই আপনার প্রশ্নের সমাধানে সর্বদা প্রস্তুত।\n\n- 💡 **মূল বিষয়:** আপনার বিষয়টি অত্যন্ত গুরুত্বপূর্ণ। সঠিক তথ্য ও সঠিক নিয়ম অনুযায়ী সমাধান করা বাঞ্ছনীয়।\n- 🔍 **পরামর্শ ও নির্দেশনা:** আপনি যদি এই বিষয়ে আরো সুনির্দিষ্ট তথ্য, গাণিতিক সমাধান, কোডিং বা বিস্তারিত ব্যাখ্যা পেতে চান, তবে আর একটু বিস্তারিত লিখুন।\n- 🚀 **সহায়তা:** বাশার ক্লাউড এআই যে কোনো জটিল প্রশ্নের সম্পূর্ণ ও সুন্দর সমাধান দিতে সক্ষম!\n\nপরবর্তী প্রশ্নটি এখনই লিখে পাঠান! 🌸`;
   }
-  return `✨ **Analysis & Answer to your query:**\n\nQuestion: **"${userQuery}"**\n\nBashar Cloud AI is fully equipped to assist you with comprehensive answers:\n\n- 💡 **Key Takeaway:** Understanding the core concepts and applying best practices ensures success.\n- 🔍 **Next Steps:** Please feel free to provide additional context if you need step-by-step algorithms, calculations, or detailed essays.\n- 🚀 **Always Available:** Bashar Cloud AI is ready for any general, academic, or technical inquiry!\n\nType your next query anytime! 🌟`;
+  return `Assalamu Alaikum wa Rahmatullahi wa Barakatuhu (আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু) 🌟\n\n✨ **Analysis & Answer to your query:**\n\nQuestion: **"${userQuery}"**\n\nBashar Cloud AI is fully equipped to assist you with comprehensive answers:\n\n- 💡 **Key Takeaway:** Understanding the core concepts and applying best practices ensures success.\n- 🔍 **Next Steps:** Please feel free to provide additional context if you need step-by-step algorithms, calculations, or detailed essays.\n- 🚀 **Always Available:** Bashar Cloud AI is ready for any general, academic, or technical inquiry!\n\nType your next query anytime! 🌟`;
 }
 
 // Server-side Gemini Chat API proxy route
@@ -222,14 +222,22 @@ Your capabilities:
     let response;
     let actualModel = selectedModel;
 
-    try {
-      response = await ai.models.generateContent({
-        model: selectedModel,
+    const generateWithTimeout = async (modelName: string) => {
+      const callPromise = ai.models.generateContent({
+        model: modelName,
         contents,
         config: {
           systemInstruction: fullInstruction,
         }
       });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('AI generation timed out')), 8000)
+      );
+      return Promise.race([callPromise, timeoutPromise]) as Promise<any>;
+    };
+
+    try {
+      response = await generateWithTimeout(selectedModel);
     } catch (primaryErr: any) {
       const errStr = primaryErr?.message || String(primaryErr);
       console.warn(`Primary Gemini model ${selectedModel} issue:`, errStr);
@@ -237,13 +245,7 @@ Your capabilities:
       if (selectedModel !== 'gemini-3.1-flash-lite') {
         console.warn('Falling back to gemini-3.1-flash-lite...');
         actualModel = 'gemini-3.1-flash-lite';
-        response = await ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
-          contents,
-          config: {
-            systemInstruction: fullInstruction,
-          }
-        });
+        response = await generateWithTimeout('gemini-3.1-flash-lite');
       } else {
         throw primaryErr;
       }
@@ -261,125 +263,6 @@ Your capabilities:
       notice: 'Served with high reliability offline engine'
     });
   }
-});
-
-// AI Image Generation Endpoint with Custom Size and Style support
-app.post('/api/image/generate', async (req: Request, res: Response) => {
-  const { prompt, style = 'photorealistic', aspectRatio = '1:1', width = 1080, height = 1080, imageSize = '1K' } = req.body;
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Prompt is required' });
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey) {
-    try {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
-          }
-        }
-      });
-
-      const enrichedPrompt = `${prompt.trim()}, ${style} style, ultra high resolution, clean visual composition, aspect ratio ${aspectRatio}, exact dimensions ${width}x${height}px.`;
-      const validRatios = ['1:1', '3:4', '4:3', '9:16', '16:9', '1:4', '1:8', '4:1', '8:1'];
-      const chosenRatio = validRatios.includes(aspectRatio) ? aspectRatio : '1:1';
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-nano-banana-2.1',
-        contents: {
-          parts: [{ text: enrichedPrompt }]
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: chosenRatio as any,
-            imageSize: (imageSize as any) || '1K'
-          }
-        }
-      });
-
-      if (response && response.candidates && response.candidates[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            const base64EncodeString = part.inlineData.data;
-            const mime = part.inlineData.mimeType || 'image/png';
-            const imageUrl = `data:${mime};base64,${base64EncodeString}`;
-            return res.json({ imageUrl, success: true, model: 'gemini-nano-banana-2.1' });
-          }
-        }
-      }
-    } catch (apiErr: any) {
-      console.warn('Backend image model execution notice:', apiErr?.message || apiErr);
-    }
-  }
-
-  return res.json({ 
-    success: true, 
-    fallback: true, 
-    message: 'Rendered via client-side high-resolution generative engine' 
-  });
-});
-
-// AI Image Edit Endpoint with Custom Size support
-app.post('/api/image/edit', async (req: Request, res: Response) => {
-  const { sourceImage, prompt, aspectRatio = '1:1', width = 1080, height = 1080 } = req.body;
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey && sourceImage && typeof sourceImage === 'string') {
-    try {
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
-          }
-        }
-      });
-
-      const base64Data = sourceImage.replace(/^data:image\/\w+;base64,/, '');
-      const mimeMatch = sourceImage.match(/^data:(image\/\w+);base64,/);
-      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-nano-banana-2.1',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType
-              }
-            },
-            {
-              text: `${prompt || 'Enhance and resize image'}, dimensions ${width}x${height}px, aspect ratio ${aspectRatio}.`
-            }
-          ]
-        }
-      });
-
-      if (response && response.candidates && response.candidates[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            const base64EncodeString = part.inlineData.data;
-            const mime = part.inlineData.mimeType || 'image/png';
-            const imageUrl = `data:${mime};base64,${base64EncodeString}`;
-            return res.json({ imageUrl, success: true, model: 'gemini-nano-banana-2.1' });
-          }
-        }
-      }
-    } catch (editErr) {
-      console.warn('Backend image edit notice:', editErr);
-    }
-  }
-
-  return res.json({ 
-    success: true, 
-    fallback: true, 
-    message: 'Rendered via client-side canvas engine' 
-  });
 });
 
 async function startServer() {

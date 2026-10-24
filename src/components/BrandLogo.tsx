@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export const DEFAULT_BRAND_LOGO = '/src/assets/images/bashar_brand_logo_1792665940482.jpg';
+export const DEFAULT_BRAND_LOGO = '/src/assets/images/bashar_cloud_logo_1792845246258.jpg';
 
 interface BrandLogoProps {
   customLogoUrl?: string;

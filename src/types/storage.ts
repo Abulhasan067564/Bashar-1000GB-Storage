@@ -124,7 +124,7 @@ export interface SiteSettings {
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteName: 'Bashar',
   siteBadge: '1000GB',
-  siteLogoUrl: '/src/assets/images/bashar_brand_logo_1792665940482.jpg',
+  siteLogoUrl: '/src/assets/images/bashar_cloud_logo_1792845246258.jpg',
   taglineBn: '১ টেরাবাইট হাই-স্পিড ক্লাউড ভল্ট • অনলাইন ডাটাবেস',
   taglineEn: '1 TB Ultra-Fast Cloud Vault • Firestore Connected',
   youtubeChannelUrl: 'http://www.youtube.com/@BasharGojolStudio',

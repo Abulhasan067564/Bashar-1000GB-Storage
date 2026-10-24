@@ -19,7 +19,8 @@ import {
   ArchiveRestore,
   Folder,
   Move,
-  Copy
+  Copy,
+  Info
 } from 'lucide-react';
 
 interface FileListRowProps {
@@ -31,6 +32,7 @@ interface FileListRowProps {
   onShare: (file: StorageFile) => void;
   onDelete: (file: StorageFile) => void;
   onToggleStar: (file: StorageFile) => void;
+  onViewDetails?: (file: StorageFile) => void;
   onRestore?: (file: StorageFile) => void;
   onOpenFolder?: (folder: StorageFile) => void;
   onQuickMove?: (file: StorageFile) => void;
@@ -49,6 +51,7 @@ export const FileListRow: React.FC<FileListRowProps> = ({
   onShare,
   onDelete,
   onToggleStar,
+  onViewDetails,
   onRestore,
   onOpenFolder,
   onQuickMove,
@@ -267,6 +270,17 @@ export const FileListRow: React.FC<FileListRowProps> = ({
                     <Download className="w-3.5 h-3.5" />
                   </button>
                 </>
+              )}
+
+              {onViewDetails && (
+                <button
+                  type="button"
+                  onClick={() => onViewDetails(file)}
+                  className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-slate-800 rounded-lg transition"
+                  title={lang === 'bn' ? 'মেটাডাটা ও ফাইল বিবরণ' : 'Details & Metadata'}
+                >
+                  <Info className="w-3.5 h-3.5" />
+                </button>
               )}
 
               <button

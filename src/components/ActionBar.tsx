@@ -24,7 +24,7 @@ import {
   ChevronRight,
   Video,
   Mic,
-  Wand2
+  Info
 } from 'lucide-react';
 
 interface ActionBarProps {
@@ -39,7 +39,6 @@ interface ActionBarProps {
   onOpenUpload: () => void;
   onOpenCreateFile: () => void;
   onOpenCreateFolder: () => void;
-  onOpenImageStudio?: () => void;
   onOpenScreenRecorder?: () => void;
   onOpenVoiceRecorder?: () => void;
   onOpenMoveModal: () => void;
@@ -59,6 +58,8 @@ interface ActionBarProps {
   sortBy: 'date' | 'name' | 'size';
   onSortByChange: (sort: 'date' | 'name' | 'size') => void;
   isZipping?: boolean;
+  isDetailsPanelOpen?: boolean;
+  onToggleDetailsPanel?: () => void;
   lang: 'bn' | 'en';
 }
 
@@ -74,7 +75,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenUpload,
   onOpenCreateFile,
   onOpenCreateFolder,
-  onOpenImageStudio,
   onOpenScreenRecorder,
   onOpenVoiceRecorder,
   onOpenMoveModal,
@@ -94,6 +94,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   sortBy,
   onSortByChange,
   isZipping = false,
+  isDetailsPanelOpen = false,
+  onToggleDetailsPanel,
   lang
 }) => {
   const isTrashTab = activeTab === 'trash';
@@ -218,17 +220,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
               <span>{lang === 'bn' ? 'নতুন ফোল্ডার' : 'New Folder'}</span>
             </button>
-
-            {onOpenImageStudio && (
-              <button
-                onClick={onOpenImageStudio}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 hover:text-purple-200 border border-purple-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
-                title={lang === 'bn' ? 'এআই ইমেজ স্টুডিও: প্রম্পট দিয়ে ছবি তৈরি ও ইচ্ছামতো সাইজ দিন' : 'AI Image Studio: Create & Resize Any Size'}
-              >
-                <Wand2 className="w-3.5 h-3.5 text-purple-400" />
-                <span>{lang === 'bn' ? 'এআই ইমেজ' : 'AI Image'}</span>
-              </button>
-            )}
 
             {onOpenScreenRecorder && (
               <button
@@ -417,6 +408,22 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <List className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Collapsible Metadata / File Details Side Panel Toggle */}
+          {onToggleDetailsPanel && (
+            <button
+              onClick={onToggleDetailsPanel}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition ml-1 cursor-pointer border shadow-sm ${
+                isDetailsPanelOpen
+                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500/60 ring-1 ring-cyan-500/40'
+                  : 'bg-slate-950/80 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700'
+              }`}
+              title={lang === 'bn' ? 'ফাইল মেটাডাটা ও বিস্তারিত প্যানেল খুলুন/বন্ধ করুন' : 'Toggle File Metadata & Details Panel'}
+            >
+              <Info className={`w-3.5 h-3.5 ${isDetailsPanelOpen ? 'text-cyan-400' : 'text-slate-400'}`} />
+              <span className="hidden sm:inline">{lang === 'bn' ? 'মেটাডাটা' : 'Metadata'}</span>
+            </button>
+          )}
         </div>
       </div>
 
