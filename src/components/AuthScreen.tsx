@@ -31,8 +31,8 @@ import {
   ShieldCheck,
   Bot,
   Calculator
-} from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
+import { safeReadFileAsDataUrl } from '../utils/fileReaderHelper';
 import { BrandLogo } from './BrandLogo';
 
 interface AuthScreenProps {
@@ -97,7 +97,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
   }, [emailOrPhone, usersList]);
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -106,12 +106,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCustomLogo(reader.result as string);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await safeReadFileAsDataUrl(file);
+      if (dataUrl) {
+        setCustomLogo(dataUrl);
+        setError(null);
+      } else {
+        setError(lang === 'bn' ? 'ফাইলটি পড়া সম্ভব হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Could not read file. Please try again.');
+      }
+    } catch (readErr) {
+      console.warn('AuthScreen logo read error:', readErr);
+      setError(lang === 'bn' ? 'ফাইলটি পড়তে সমস্যা হয়েছে।' : 'Failed to read file.');
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {

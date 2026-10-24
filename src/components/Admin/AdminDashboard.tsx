@@ -42,6 +42,7 @@ import {
 import { UserAccount, AdminCredentials, SiteSettings, PaymentRequest } from '../../types/storage';
 import { WebsiteSettingsModal } from './WebsiteSettingsModal';
 import { BrandLogo } from '../BrandLogo';
+import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
 
 const PRESET_LOGOS = [
   '/src/assets/images/bashar_cloud_logo_1792845246258.jpg',
@@ -198,12 +199,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setEditCustomLogo(reader.result as string);
-      setEditError(null);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await safeReadFileAsDataUrl(file);
+      if (dataUrl) {
+        setEditCustomLogo(dataUrl);
+        setEditError(null);
+      } else {
+        setEditError(lang === 'bn' ? 'ফাইলটি পড়া সম্ভব হয়নি।' : 'Could not read file.');
+      }
+    } catch (readErr) {
+      console.warn('Admin logo read error:', readErr);
+      setEditError(lang === 'bn' ? 'ফাইলটি পড়তে সমস্যা হয়েছে।' : 'Failed to read file.');
+    }
   };
 
   // Apply Logo from URL input

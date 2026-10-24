@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StorageFile, FileCategory } from '../../types/storage';
 import { detectFileCategory } from '../../services/indexedDbStorage';
 import { encryptFileContent } from '../../services/cryptoService';
+import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
 import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield, Zap } from 'lucide-react';
 
 interface UploadModalProps {
@@ -37,15 +38,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const modalDragCounter = useRef<number>(0);
 
   if (!isOpen) return null;
-
-  const readFileAsDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -103,7 +95,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     try {
       let completedCount = 0;
       const processSingleFile = async (file: File, index: number): Promise<StorageFile> => {
-        let dataUrl = await readFileAsDataUrl(file);
+        let dataUrl = await safeReadFileAsDataUrl(file);
 
         if (encryptEnabled) {
           // Encrypt client-side

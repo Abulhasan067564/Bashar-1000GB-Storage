@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { StorageFile } from '../../types/storage';
 import { getSequentialScreenRecordName } from '../../utils/bengaliNaming';
+import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
 
 interface ScreenRecorderModalProps {
   isOpen: boolean;

@@ -26,6 +26,7 @@ import {
   UserPlus,
   Copyright
 } from 'lucide-react';
+import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
 
 interface WebsiteSettingsModalProps {
   isOpen: boolean;
@@ -140,12 +141,18 @@ export const WebsiteSettingsModal: React.FC<WebsiteSettingsModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSiteLogoUrl(reader.result as string);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await safeReadFileAsDataUrl(file);
+      if (dataUrl) {
+        setSiteLogoUrl(dataUrl);
+        setError(null);
+      } else {
+        setError(lang === 'bn' ? 'ফাইলটি পড়া সম্ভব হয়নি।' : 'Could not read file.');
+      }
+    } catch (readErr) {
+      console.warn('Website logo read error:', readErr);
+      setError(lang === 'bn' ? 'ফাইলটি পড়তে সমস্যা হয়েছে।' : 'Failed to read file.');
+    }
   };
 
   const handleApplyLogoUrl = () => {

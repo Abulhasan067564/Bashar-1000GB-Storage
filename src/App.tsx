@@ -51,6 +51,7 @@ import {
 } from './services/firebase';
 import { isSameEmailOrPhone } from './utils/accountValidation';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
+import { safeReadFileAsDataUrl } from './utils/fileReaderHelper';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { ActionBar } from './components/ActionBar';
@@ -1680,52 +1681,31 @@ export default function App() {
     showToast(lang === 'bn' ? '⚡ টার্বো স্পিডে ফাইল প্রসেস হচ্ছে...' : '⚡ Processing at turbo speed...', 'info');
 
     try {
-      const readSingle = (file: File, idx: number): Promise<StorageFile> => {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const dataUrl = reader.result as string;
-            const category = detectFileCategory(file.name, file.type);
-            resolve({
-              id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
-              name: file.name,
-              size: file.size,
-              type: file.type || 'application/octet-stream',
-              category,
-              dataUrl,
-              uploadedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              isStarred: false,
-              isEncrypted: false,
-              inTrash: false,
-              ownerId: currentUser.id,
-              ownerPhone: currentUser.emailOrPhone,
-              folderId: currentFolderId || null,
-              shared: { isShared: false }
-            });
-          };
-          reader.onerror = () => {
-            const category = detectFileCategory(file.name, file.type);
-            resolve({
-              id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
-              name: file.name,
-              size: file.size,
-              type: file.type || 'application/octet-stream',
-              category,
-              dataUrl: '',
-              uploadedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              isStarred: false,
-              isEncrypted: false,
-              inTrash: false,
-              ownerId: currentUser.id,
-              ownerPhone: currentUser.emailOrPhone,
-              folderId: currentFolderId || null,
-              shared: { isShared: false }
-            });
-          };
-          reader.readAsDataURL(file);
-        });
+      const readSingle = async (file: File, idx: number): Promise<StorageFile> => {
+        let dataUrl = '';
+        try {
+          dataUrl = await safeReadFileAsDataUrl(file);
+        } catch (readErr) {
+          console.warn('Direct drop read warning:', readErr);
+        }
+        const category = detectFileCategory(file.name, file.type);
+        return {
+          id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          category,
+          dataUrl,
+          uploadedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isStarred: false,
+          isEncrypted: false,
+          inTrash: false,
+          ownerId: currentUser.id,
+          ownerPhone: currentUser.emailOrPhone,
+          folderId: currentFolderId || null,
+          shared: { isShared: false }
+        };
       };
 
       const results: StorageFile[] = [];

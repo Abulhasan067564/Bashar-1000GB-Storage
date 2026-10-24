@@ -18,6 +18,7 @@ import {
   Clock
 } from 'lucide-react';
 import { getTrialStatus, toBengaliDigits } from '../../utils/bengaliNaming';
+import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -83,12 +84,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCustomLogo(reader.result as string);
-      setError(null);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await safeReadFileAsDataUrl(file);
+      if (dataUrl) {
+        setCustomLogo(dataUrl);
+        setError(null);
+      } else {
+        setError(lang === 'bn' ? 'ফাইলটি পড়া সম্ভব হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Could not read file. Please try again.');
+      }
+    } catch (readErr) {
+      console.warn('Profile image read error:', readErr);
+      setError(lang === 'bn' ? 'ফাইলটি পড়তে সমস্যা হয়েছে।' : 'Failed to read file.');
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
