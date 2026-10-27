@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Handle Logo Upload from device
-  const handleEditLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 

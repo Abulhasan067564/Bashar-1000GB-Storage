@@ -122,12 +122,13 @@ export const WebsiteSettingsModal: React.FC<WebsiteSettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -161,8 +162,6 @@ export const WebsiteSettingsModal: React.FC<WebsiteSettingsModalProps> = ({
     setLogoUrlInput('');
     setError(null);
   };
-
-  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
 
   const handleResetToDefault = () => {
     if (!isConfirmingReset) {

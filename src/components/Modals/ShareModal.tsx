@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StorageFile } from '../../types/storage';
 import { Share2, Link as LinkIcon, Lock, Calendar, Copy, Check, QrCode, X, Globe, Shield } from 'lucide-react';
 
@@ -17,17 +17,26 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   onUpdateFile,
   lang
 }) => {
-  if (!isOpen || !file) return null;
+  const currentShared = file?.shared || { isShared: false };
+  const shareId = currentShared.shareId || (file ? `share-${file.id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}` : "");
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/share/${shareId}` : "";
 
-  const currentShared = file.shared || { isShared: false };
-  const shareId = currentShared.shareId || `share-${file.id.substring(0, 8)}-${Math.random().toString(36).substring(2, 6)}`;
-  const shareUrl = `${window.location.origin}/share/${shareId}`;
-
-  const [isShared, setIsShared] = useState(currentShared.isShared);
+  const [isShared, setIsShared] = useState(Boolean(currentShared.isShared));
   const [requirePassword, setRequirePassword] = useState(Boolean(currentShared.requiresPassword));
-  const [password, setPassword] = useState(currentShared.passwordHash || '');
-  const [expiryDays, setExpiryDays] = useState('7');
+  const [password, setPassword] = useState(currentShared.passwordHash || "");
+  const [expiryDays, setExpiryDays] = useState("7");
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (file) {
+      setIsShared(Boolean(file.shared?.isShared));
+      setRequirePassword(Boolean(file.shared?.requiresPassword));
+      setPassword(file.shared?.passwordHash || "");
+      setCopied(false);
+    }
+  }, [file, isOpen]);
+
+  if (!isOpen || !file) return null;
 
   const handleSave = () => {
     const updated: StorageFile = {

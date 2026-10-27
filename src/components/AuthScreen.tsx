@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   Bot,
   Calculator
+} from 'lucide-react';
 import { YouTubeBanner } from './YouTubeBanner';
 import { safeReadFileAsDataUrl } from '../utils/fileReaderHelper';
 import { BrandLogo } from './BrandLogo';
