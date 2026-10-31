@@ -10,7 +10,8 @@ import {
   ClipboardState,
   SiteSettings,
   DEFAULT_SITE_SETTINGS,
-  PaymentRequest
+  PaymentRequest,
+  getFolderColorStyle
 } from './types/storage';
 import { 
   getAllStoredFiles, 
@@ -76,6 +77,7 @@ import { VoiceRecorderModal } from './components/Modals/VoiceRecorderModal';
 import { SubscriptionModal } from './components/Modals/SubscriptionModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
 import { FileDetailsPanel } from './components/FileDetailsPanel';
+import { FolderContextMenu } from './components/FolderContextMenu';
 import { getTrialStatus, getNextScreenRecordNumber, getNextVoiceRecordNumber, toBengaliDigits } from './utils/bengaliNaming';
 import { 
   Cloud, 
@@ -264,6 +266,10 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFileDetailsOpen, setIsFileDetailsOpen] = useState(false);
   const [inspectedFileId, setInspectedFileId] = useState<string | null>(null);
+  const [folderContextMenu, setFolderContextMenu] = useState<{
+    folder: StorageFile;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // Active selected file for metadata side panel
   const activeSelectedFile = useMemo(() => {
@@ -1221,6 +1227,68 @@ export default function App() {
   const handleOpenFolder = (folder: StorageFile) => {
     setCurrentFolderId(folder.id);
     setSelectedFileIds(new Set());
+  };
+
+  // Folder Context Menu & Color Label Assignment
+  const handleFolderContextMenu = (folder: StorageFile, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFolderContextMenu({
+      folder,
+      position: { x: e.clientX, y: e.clientY }
+    });
+  };
+
+  const handleSetFolderColor = async (folderId: string, colorId: string | undefined) => {
+    setFiles(prev => prev.map(f => {
+      if (f.id === folderId) {
+        return { ...f, colorLabel: colorId, updatedAt: new Date().toISOString() };
+      }
+      return f;
+    }));
+
+    setFolderContextMenu(prev => prev && prev.folder.id === folderId ? {
+      ...prev,
+      folder: { ...prev.folder, colorLabel: colorId, updatedAt: new Date().toISOString() }
+    } : prev);
+
+    const targetFolder = files.find(f => f.id === folderId);
+    if (!targetFolder) return;
+
+    const updatedFolder: StorageFile = {
+      ...targetFolder,
+      colorLabel: colorId,
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      await saveStoredFile(updatedFolder);
+    } catch (err) {
+      console.warn('IDB folder color save notice:', err);
+    }
+
+    try {
+      if (currentUser?.emailOrPhone) {
+        await saveFileToFirestore(updatedFolder, currentUser.emailOrPhone);
+      }
+    } catch (err) {
+      console.warn('Firestore folder color save notice:', err);
+    }
+
+    const colorStyle = getFolderColorStyle(colorId);
+    if (colorStyle) {
+      showToast(
+        lang === 'bn' 
+          ? `"${targetFolder.name}" ফোল্ডারে "${colorStyle.nameBn}" কালার লেবেল যুক্ত হয়েছে` 
+          : `Assigned "${colorStyle.nameEn}" color label to "${targetFolder.name}"`, 
+        'success'
+      );
+    } else {
+      showToast(
+        lang === 'bn' ? `"${targetFolder.name}" ফোল্ডারের কালার লেবেল মুছে ফেলা হয়েছে` : `Removed color label from "${targetFolder.name}"`, 
+        'info'
+      );
+    }
   };
 
   const handleNavigateUpFolder = () => {
@@ -2197,6 +2265,7 @@ export default function App() {
                     onQuickMove={handleOpenMoveModal}
                     onQuickCopy={handleOpenCopyModal}
                     onDropIntoFolder={handleDropIntoFolder}
+                    onFolderContextMenu={handleFolderContextMenu}
                     isTrash={activeTab === 'trash'}
                     lang={lang}
                   />
@@ -2233,6 +2302,7 @@ export default function App() {
                         onQuickMove={handleOpenMoveModal}
                         onQuickCopy={handleOpenCopyModal}
                         onDropIntoFolder={handleDropIntoFolder}
+                        onFolderContextMenu={handleFolderContextMenu}
                         isTrash={activeTab === 'trash'}
                         lang={lang}
                       />
@@ -2261,6 +2331,7 @@ export default function App() {
             setCurrentFolderId(fId);
             setActiveTab('all');
           }}
+          onSetFolderColor={handleSetFolderColor}
           isTrash={activeTab === 'trash'}
           lang={lang}
         />
@@ -2422,6 +2493,25 @@ export default function App() {
         currentFolder={currentFolder}
         lang={lang}
       />
+
+      {/* Folder Right-Click Color Label & Context Menu */}
+      {folderContextMenu && (
+        <FolderContextMenu
+          folder={folderContextMenu.folder}
+          position={folderContextMenu.position}
+          onClose={() => setFolderContextMenu(null)}
+          onSetColor={handleSetFolderColor}
+          onOpenFolder={handleOpenFolder}
+          onMoveCopy={handleOpenMoveModal}
+          onToggleStar={handleToggleStar}
+          onDelete={handleDeleteFile}
+          onViewDetails={(f) => {
+            setInspectedFileId(f.id);
+            setIsFileDetailsOpen(true);
+          }}
+          lang={lang}
+        />
+      )}
     </div>
   );
 }

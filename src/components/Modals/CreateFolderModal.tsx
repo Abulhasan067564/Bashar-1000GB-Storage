@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { StorageFile } from '../../types/storage';
-import { FolderPlus, X, Folder } from 'lucide-react';
+import { StorageFile, FOLDER_COLOR_PRESETS } from '../../types/storage';
+import { FolderPlus, X, Folder, Palette, Check } from 'lucide-react';
 
 interface CreateFolderModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
   lang
 }) => {
   const [folderName, setFolderName] = useState('');
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -46,11 +47,13 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
       inTrash: false,
       ownerId,
       isFolder: true,
+      colorLabel: selectedColor,
       folderId: currentFolderId || null
     };
 
     onFolderCreated(newFolder);
     setFolderName('');
+    setSelectedColor(undefined);
     setError(null);
     onClose();
   };
@@ -103,6 +106,48 @@ export const CreateFolderModal: React.FC<CreateFolderModalProps> = ({
                 className="w-full bg-slate-950 border border-slate-800 focus:border-amber-400 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-600 outline-none transition"
                 autoFocus
               />
+            </div>
+          </div>
+
+          {/* Color Label Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{lang === 'bn' ? 'কালার লেবেল (ঐচ্ছিক):' : 'Color Label (Optional):'}</span>
+              </label>
+              {selectedColor && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedColor(undefined)}
+                  className="text-[10px] text-slate-400 hover:text-red-400 transition cursor-pointer"
+                >
+                  {lang === 'bn' ? 'ডিফল্ট' : 'Clear'}
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-5 gap-1.5 p-2 bg-slate-950 border border-slate-800 rounded-xl">
+              {FOLDER_COLOR_PRESETS.map(preset => {
+                const isSelected = selectedColor === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setSelectedColor(isSelected ? undefined : preset.id)}
+                    className={`relative group p-1 rounded-lg flex items-center justify-center transition-transform hover:scale-110 cursor-pointer ${
+                      isSelected ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-950' : ''
+                    }`}
+                    title={lang === 'bn' ? preset.nameBn : preset.nameEn}
+                  >
+                    <span
+                      className="w-6 h-6 rounded-md shadow-md flex items-center justify-center border border-white/20 transition"
+                      style={{ backgroundColor: preset.hex }}
+                    >
+                      {isSelected && <Check className="w-3.5 h-3.5 text-white drop-shadow stroke-[3]" />}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

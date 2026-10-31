@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StorageFile } from '../types/storage';
+import { StorageFile, getFolderColorStyle } from '../types/storage';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -20,7 +20,8 @@ import {
   Folder,
   Move,
   Copy,
-  Info
+  Info,
+  Palette
 } from 'lucide-react';
 
 interface FileListRowProps {
@@ -38,6 +39,7 @@ interface FileListRowProps {
   onQuickMove?: (file: StorageFile) => void;
   onQuickCopy?: (file: StorageFile) => void;
   onDropIntoFolder?: (draggedFileId: string, targetFolderId: string) => void;
+  onFolderContextMenu?: (folder: StorageFile, e: React.MouseEvent) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -57,11 +59,13 @@ export const FileListRow: React.FC<FileListRowProps> = ({
   onQuickMove,
   onQuickCopy,
   onDropIntoFolder,
+  onFolderContextMenu,
   isTrash = false,
   lang
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const isFolder = Boolean(file.isFolder);
+  const folderColor = isFolder ? getFolderColorStyle(file.colorLabel) : null;
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return isFolder ? (lang === 'bn' ? 'ফোল্ডার' : 'Folder') : '0 B';
@@ -73,6 +77,9 @@ export const FileListRow: React.FC<FileListRowProps> = ({
 
   const getCategoryIcon = () => {
     if (isFolder) {
+      if (folderColor) {
+        return <Folder className={`w-4 h-4 ${folderColor.textClass} fill-current/20`} />;
+      }
       return <Folder className="w-4 h-4 text-amber-400 fill-amber-400/20" />;
     }
     switch (file.category) {
@@ -132,6 +139,13 @@ export const FileListRow: React.FC<FileListRowProps> = ({
   return (
     <tr
       onClick={handleClickRow}
+      onContextMenu={(e) => {
+        if (isFolder && !isTrash) {
+          e.preventDefault();
+          e.stopPropagation();
+          onFolderContextMenu?.(file, e);
+        }
+      }}
       draggable={!isFolder && !isTrash}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -143,7 +157,9 @@ export const FileListRow: React.FC<FileListRowProps> = ({
           : isDragOver
             ? 'bg-amber-950/40 ring-1 ring-amber-400'
             : isFolder
-              ? 'bg-slate-900/40'
+              ? folderColor
+                ? `${folderColor.bgLight} border-l-2 ${folderColor.borderClass}`
+                : 'bg-slate-900/40'
               : ''
       }`}
     >
@@ -165,18 +181,46 @@ export const FileListRow: React.FC<FileListRowProps> = ({
       {/* Name & Icon */}
       <td className="py-3 px-4">
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg border shrink-0 ${isFolder ? 'bg-amber-950/30 border-amber-500/30' : 'bg-slate-950 border-slate-800'}`}>
+          <div className={`p-2 rounded-lg border shrink-0 ${
+            isFolder
+              ? folderColor
+                ? `${folderColor.bgLight} ${folderColor.borderClass}`
+                : 'bg-amber-950/30 border-amber-500/30'
+              : 'bg-slate-950 border-slate-800'
+          }`}>
             {getCategoryIcon()}
           </div>
           <div className="truncate max-w-xs sm:max-w-md">
             <div className="flex items-center gap-1.5">
-              <span className={`text-xs font-semibold truncate ${isFolder ? 'text-amber-200 font-bold' : 'text-slate-200'}`}>
+              <span className={`text-xs font-semibold truncate ${isFolder ? (folderColor ? `${folderColor.textClass} font-bold` : 'text-amber-200 font-bold') : 'text-slate-200'}`}>
                 {file.name}
               </span>
               {isFolder && (
-                <span className="text-amber-400 text-[10px] font-bold font-mono uppercase">
-                  {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
-                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {folderColor && (
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/20"
+                      style={{ backgroundColor: folderColor.hex }}
+                      title={`${lang === 'bn' ? 'কালার লেবেল' : 'Color'}: ${lang === 'bn' ? folderColor.nameBn : folderColor.nameEn}`}
+                    />
+                  )}
+                  <span className={`text-[10px] font-bold font-mono uppercase ${folderColor ? folderColor.textClass : 'text-amber-400'}`}>
+                    {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
+                  </span>
+                  {!isTrash && onFolderContextMenu && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFolderContextMenu(file, e);
+                      }}
+                      className="p-0.5 rounded text-slate-500 hover:text-cyan-300 transition opacity-0 group-hover:opacity-100"
+                      title={lang === 'bn' ? 'কালার লেবেল দিন (রাইট-ক্লিক)' : 'Color label (Right-click)'}
+                    >
+                      <Palette className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               )}
               {file.isEncrypted && (
                 <span title="Encrypted Vault">

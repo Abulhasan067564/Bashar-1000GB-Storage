@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StorageFile } from '../types/storage';
+import { StorageFile, getFolderColorStyle } from '../types/storage';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -22,7 +22,8 @@ import {
   Move,
   Copy,
   MoreVertical,
-  Info
+  Info,
+  Palette
 } from 'lucide-react';
 
 interface FileCardProps {
@@ -40,6 +41,7 @@ interface FileCardProps {
   onQuickMove?: (file: StorageFile) => void;
   onQuickCopy?: (file: StorageFile) => void;
   onDropIntoFolder?: (draggedFileId: string, targetFolderId: string) => void;
+  onFolderContextMenu?: (folder: StorageFile, e: React.MouseEvent) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -59,11 +61,13 @@ export const FileCard: React.FC<FileCardProps> = ({
   onQuickMove,
   onQuickCopy,
   onDropIntoFolder,
+  onFolderContextMenu,
   isTrash = false,
   lang
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const isFolder = Boolean(file.isFolder);
+  const folderColor = isFolder ? getFolderColorStyle(file.colorLabel) : null;
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return isFolder ? (lang === 'bn' ? 'ফোল্ডার' : 'Folder') : '0 B';
@@ -75,6 +79,9 @@ export const FileCard: React.FC<FileCardProps> = ({
 
   const getCategoryTheme = () => {
     if (isFolder) {
+      if (folderColor) {
+        return { icon: Folder, color: folderColor.textClass, bg: `${folderColor.bgLight} ${folderColor.borderClass}` };
+      }
       return { icon: Folder, color: 'text-amber-400', bg: 'bg-amber-950/40 border-amber-500/40' };
     }
     switch (file.category) {
@@ -138,6 +145,13 @@ export const FileCard: React.FC<FileCardProps> = ({
   return (
     <div
       onClick={handleClickCard}
+      onContextMenu={(e) => {
+        if (isFolder && !isTrash) {
+          e.preventDefault();
+          e.stopPropagation();
+          onFolderContextMenu?.(file, e);
+        }
+      }}
       draggable={!isFolder && !isTrash}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -149,7 +163,9 @@ export const FileCard: React.FC<FileCardProps> = ({
           : isDragOver
             ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-950/30 scale-105'
             : isFolder
-              ? 'border-amber-500/30 hover:border-amber-400/60 bg-slate-900/80'
+              ? folderColor
+                ? `${folderColor.borderClass} ${folderColor.bgLight} hover:border-cyan-400/60`
+                : 'border-amber-500/30 hover:border-amber-400/60 bg-slate-900/80'
               : 'border-slate-800 hover:border-slate-700'
       }`}
     >
@@ -170,12 +186,34 @@ export const FileCard: React.FC<FileCardProps> = ({
 
         <div className="flex items-center gap-1.5">
           {isFolder && (
-            <span
-              className="text-[10px] font-bold text-amber-400 tracking-wide uppercase font-mono"
-              title={lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
-            >
-              {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {folderColor && (
+                <span
+                  className="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/20 animate-pulse"
+                  style={{ backgroundColor: folderColor.hex }}
+                  title={`${lang === 'bn' ? 'কালার লেবেল' : 'Color'}: ${lang === 'bn' ? folderColor.nameBn : folderColor.nameEn}`}
+                />
+              )}
+              <span
+                className={`text-[10px] font-bold tracking-wide uppercase font-mono ${folderColor ? folderColor.textClass : 'text-amber-400'}`}
+                title={lang === 'bn' ? 'ফোল্ডার (রাইট ক্লিক করে কালার সেট করুন)' : 'Folder (Right-click to assign color)'}
+              >
+                {lang === 'bn' ? 'ফোল্ডার' : 'Folder'}
+              </span>
+              {!isTrash && onFolderContextMenu && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFolderContextMenu(file, e);
+                  }}
+                  className="p-1 rounded text-slate-500 hover:text-cyan-300 transition opacity-0 group-hover:opacity-100"
+                  title={lang === 'bn' ? 'কালার লেবেল দিন (রাইট-ক্লিক)' : 'Color label (Right-click)'}
+                >
+                  <Palette className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           )}
 
           {file.isEncrypted && (
@@ -212,8 +250,10 @@ export const FileCard: React.FC<FileCardProps> = ({
       {/* Middle: Thumbnail / Category Icon */}
       <div className="flex flex-col items-center justify-center py-3 my-auto">
         {isFolder ? (
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center border shadow-inner bg-amber-500/10 border-amber-500/30 group-hover:scale-105 transition">
-            <Folder className="w-8 h-8 text-amber-400 fill-amber-400/20" />
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border shadow-inner group-hover:scale-105 transition ${
+            folderColor ? `${folderColor.bgLight} ${folderColor.borderClass}` : 'bg-amber-500/10 border-amber-500/30'
+          }`}>
+            <Folder className={`w-8 h-8 ${folderColor ? `${folderColor.textClass} fill-current/20` : 'text-amber-400 fill-amber-400/20'}`} />
           </div>
         ) : file.category === 'image' && file.dataUrl ? (
           <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-700/60 bg-black/40 flex items-center justify-center shadow-inner group-hover:border-cyan-500/50 transition">

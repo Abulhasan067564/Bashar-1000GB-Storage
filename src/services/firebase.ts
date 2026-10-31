@@ -420,6 +420,9 @@ export async function saveFileToFirestore(file: StorageFile, userPhoneOrEmail?: 
     if (file.isFolder !== undefined) {
       filePayload.isFolder = Boolean(file.isFolder);
     }
+    if (file.colorLabel !== undefined) {
+      filePayload.colorLabel = file.colorLabel;
+    }
 
     // Direct embed if under 750KB
     if (file.dataUrl && file.dataUrl.length <= 750000) {
@@ -478,6 +481,7 @@ export async function saveMultipleFilesToFirestore(files: StorageFile[], userPho
         if (file.deletedAt) filePayload.deletedAt = file.deletedAt;
         if (file.folderId !== undefined) filePayload.folderId = file.folderId || null;
         if (file.isFolder !== undefined) filePayload.isFolder = Boolean(file.isFolder);
+        if (file.colorLabel !== undefined) filePayload.colorLabel = file.colorLabel;
 
         if (file.dataUrl && file.dataUrl.length <= 750000) {
           filePayload.dataUrl = file.dataUrl;

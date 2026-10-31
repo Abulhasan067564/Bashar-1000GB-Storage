@@ -29,6 +29,38 @@ export interface StorageFile {
   ownerPhone?: string;
   folderId?: string | null; // ID of parent folder if inside one, null/undefined if root
   isFolder?: boolean; // true if this item is a folder
+  colorLabel?: string; // Color label identifier or hex for folders/files
+}
+
+export interface FolderColorOption {
+  id: string;
+  nameBn: string;
+  nameEn: string;
+  hex: string;
+  bgLight: string;
+  bgHover: string;
+  borderClass: string;
+  textClass: string;
+  glowClass: string;
+  accentClass: string;
+}
+
+export const FOLDER_COLOR_PRESETS: FolderColorOption[] = [
+  { id: 'blue', nameBn: 'ক্লাসিক নীল', nameEn: 'Classic Blue', hex: '#3b82f6', bgLight: 'bg-blue-500/15', bgHover: 'hover:bg-blue-500/25', borderClass: 'border-blue-500/40', textClass: 'text-blue-400', glowClass: 'shadow-blue-500/25', accentClass: 'bg-blue-500' },
+  { id: 'cyan', nameBn: 'সায়ান গ্লো', nameEn: 'Cyber Cyan', hex: '#06b6d4', bgLight: 'bg-cyan-500/15', bgHover: 'hover:bg-cyan-500/25', borderClass: 'border-cyan-500/40', textClass: 'text-cyan-400', glowClass: 'shadow-cyan-500/25', accentClass: 'bg-cyan-500' },
+  { id: 'emerald', nameBn: 'পান্না সবুজ', nameEn: 'Emerald Green', hex: '#10b981', bgLight: 'bg-emerald-500/15', bgHover: 'hover:bg-emerald-500/25', borderClass: 'border-emerald-500/40', textClass: 'text-emerald-400', glowClass: 'shadow-emerald-500/25', accentClass: 'bg-emerald-500' },
+  { id: 'amber', nameBn: 'সোনালী অ্যাম্বার', nameEn: 'Golden Amber', hex: '#f59e0b', bgLight: 'bg-amber-500/15', bgHover: 'hover:bg-amber-500/25', borderClass: 'border-amber-500/40', textClass: 'text-amber-400', glowClass: 'shadow-amber-500/25', accentClass: 'bg-amber-500' },
+  { id: 'rose', nameBn: 'রুবি লাল', nameEn: 'Ruby Rose', hex: '#f43f5e', bgLight: 'bg-rose-500/15', bgHover: 'hover:bg-rose-500/25', borderClass: 'border-rose-500/40', textClass: 'text-rose-400', glowClass: 'shadow-rose-500/25', accentClass: 'bg-rose-500' },
+  { id: 'purple', nameBn: 'বেগুনী নেবুলা', nameEn: 'Purple Nebula', hex: '#a855f7', bgLight: 'bg-purple-500/15', bgHover: 'hover:bg-purple-500/25', borderClass: 'border-purple-500/40', textClass: 'text-purple-400', glowClass: 'shadow-purple-500/25', accentClass: 'bg-purple-500' },
+  { id: 'orange', nameBn: 'উজ্জ্বল কমলা', nameEn: 'Vibrant Orange', hex: '#f97316', bgLight: 'bg-orange-500/15', bgHover: 'hover:bg-orange-500/25', borderClass: 'border-orange-500/40', textClass: 'text-orange-400', glowClass: 'shadow-orange-500/25', accentClass: 'bg-orange-500' },
+  { id: 'indigo', nameBn: 'গাঢ় ইন্ডিগো', nameEn: 'Deep Indigo', hex: '#6366f1', bgLight: 'bg-indigo-500/15', bgHover: 'hover:bg-indigo-500/25', borderClass: 'border-indigo-500/40', textClass: 'text-indigo-400', glowClass: 'shadow-indigo-500/25', accentClass: 'bg-indigo-500' },
+  { id: 'teal', nameBn: 'টিল গ্রিন', nameEn: 'Deep Teal', hex: '#14b8a6', bgLight: 'bg-teal-500/15', bgHover: 'hover:bg-teal-500/25', borderClass: 'border-teal-500/40', textClass: 'text-teal-400', glowClass: 'shadow-teal-500/25', accentClass: 'bg-teal-500' },
+  { id: 'pink', nameBn: 'হট পিংক', nameEn: 'Hot Pink', hex: '#ec4899', bgLight: 'bg-pink-500/15', bgHover: 'hover:bg-pink-500/25', borderClass: 'border-pink-500/40', textClass: 'text-pink-400', glowClass: 'shadow-pink-500/25', accentClass: 'bg-pink-500' }
+];
+
+export function getFolderColorStyle(colorId?: string): FolderColorOption | null {
+  if (!colorId) return null;
+  return FOLDER_COLOR_PRESETS.find(c => c.id === colorId || c.hex.toLowerCase() === colorId.toLowerCase()) || null;
 }
 
 export interface ClipboardState {

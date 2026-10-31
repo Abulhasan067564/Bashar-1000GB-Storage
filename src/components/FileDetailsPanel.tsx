@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StorageFile, FileCategory } from '../types/storage';
+import { StorageFile, FileCategory, FOLDER_COLOR_PRESETS, getFolderColorStyle } from '../types/storage';
 import { 
   X, 
   PanelRightClose, 
@@ -29,7 +29,8 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
-  Maximize2
+  Maximize2,
+  Palette
 } from 'lucide-react';
 import { toBengaliDigits } from '../utils/bengaliNaming';
 
@@ -46,6 +47,7 @@ interface FileDetailsPanelProps {
   onToggleStar: (file: StorageFile) => void;
   onMoveCopy?: (file: StorageFile) => void;
   onNavigateToFolder?: (folderId: string | null) => void;
+  onSetFolderColor?: (folderId: string, colorId: string | undefined) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -63,6 +65,7 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
   onToggleStar,
   onMoveCopy,
   onNavigateToFolder,
+  onSetFolderColor,
   isTrash = false,
   lang
 }) => {
@@ -381,6 +384,51 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Folder Color Label Selection */}
+            {selectedFile.isFolder && (
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-cyan-400" />
+                    {lang === 'bn' ? 'ফোল্ডার কালার লেবেল' : 'Folder Color Label'}
+                  </span>
+                  {selectedFile.colorLabel && onSetFolderColor && (
+                    <button
+                      type="button"
+                      onClick={() => onSetFolderColor(selectedFile.id, undefined)}
+                      className="text-[10px] text-slate-400 hover:text-red-400 transition cursor-pointer"
+                    >
+                      {lang === 'bn' ? 'ডিফল্ট কালার' : 'Reset Color'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-5 gap-1.5 p-2 bg-slate-900/70 border border-slate-800/80 rounded-xl">
+                  {FOLDER_COLOR_PRESETS.map(preset => {
+                    const isSelected = selectedFile.colorLabel === preset.id || selectedFile.colorLabel === preset.hex;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => onSetFolderColor?.(selectedFile.id, preset.id)}
+                        className={`group relative p-1 rounded-lg flex items-center justify-center transition-transform hover:scale-110 cursor-pointer ${
+                          isSelected ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-950' : ''
+                        }`}
+                        title={lang === 'bn' ? preset.nameBn : preset.nameEn}
+                      >
+                        <span
+                          className="w-6 h-6 rounded-md shadow-md flex items-center justify-center border border-white/20 transition"
+                          style={{ backgroundColor: preset.hex }}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white drop-shadow stroke-[3]" />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Section 1: এনক্রিপশন স্ট্যাটাস (Encryption Status) */}
             <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-2.5">
