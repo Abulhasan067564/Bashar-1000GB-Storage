@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   StorageFile, 
   UserAccount, 
@@ -50,7 +50,14 @@ import {
   updatePaymentRequestStatusInFirestore,
   deletePaymentRequestFromFirestore
 } from './services/firebase';
-import { isSameEmailOrPhone } from './utils/accountValidation';
+import { 
+  isSameEmailOrPhone, 
+  matchesUserAccount, 
+  isPhoneNumber, 
+  normalizePhone, 
+  isEmail, 
+  normalizeEmail 
+} from './utils/accountValidation';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
 import { safeReadFileAsDataUrl } from './utils/fileReaderHelper';
 import { Navbar } from './components/Navbar';
@@ -58,6 +65,7 @@ import { Sidebar } from './components/Sidebar';
 import { ActionBar } from './components/ActionBar';
 import { FileCard } from './components/FileCard';
 import { FileListRow } from './components/FileListRow';
+import { VirtualizedFileList } from './components/VirtualizedFileList';
 import { YouTubeBanner } from './components/YouTubeBanner';
 import { AuthScreen } from './components/AuthScreen';
 import { AdminLogin } from './components/Admin/AdminLogin';
@@ -288,6 +296,7 @@ export default function App() {
   const [isSyncingFiles, setIsSyncingFiles] = useState(false);
   const [isDragOverWindow, setIsDragOverWindow] = useState(false);
   const mainDragCounterRef = useRef<number>(0);
+  const mainScrollRef = useRef<HTMLElement>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [quotaExceeded, setQuotaExceededState] = useState(isQuotaExceeded());
   const [isQuotaDismissed, setIsQuotaDismissed] = useState(false);
@@ -509,8 +518,8 @@ export default function App() {
     );
   };
 
-  // Refresh admin data
-  const handleRefreshAdminData = async () => {
+  // Refresh admin data (memoized to prevent cascading re-renders in AdminDashboard)
+  const handleRefreshAdminData = useCallback(async () => {
     try {
       const cloudUsers = await loadUsersFromFirestore();
       const deletedIds = new Set(getDeletedUserIds());
@@ -543,7 +552,7 @@ export default function App() {
     } catch (err) {
       console.error('Error refreshing cloud data:', err);
     }
-  };
+  }, []);
 
   const handleUpdateUsersList = (updated: UserAccount[]) => {
     const prevMap = new Map(usersList.map(u => [u.id, u]));
@@ -754,7 +763,9 @@ export default function App() {
   const syncUserFiles = async (userId: string, isManual = false, userEmailOrPhone?: string) => {
     setIsSyncingFiles(true);
     try {
-      const activePhoneOrEmail = (userEmailOrPhone || currentUser?.emailOrPhone || '').trim();
+      const activePhone = (currentUser?.phone || (currentUser?.emailOrPhone && isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
+      const activeEmail = (currentUser?.email || (currentUser?.emailOrPhone && isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
+      const activePhoneOrEmail = (userEmailOrPhone || activePhone || activeEmail || currentUser?.emailOrPhone || '').trim();
       const deletedIdSet = new Set(getDeletedFileIds());
 
       // 1. Fetch locally cached files
@@ -764,7 +775,9 @@ export default function App() {
         (!f.ownerId || 
         f.ownerId === userId || 
         f.ownerId === 'default' || 
-        (activePhoneOrEmail && f.ownerPhone === activePhoneOrEmail))
+        (activePhone && (f.ownerPhone === activePhone || f.ownerEmailOrPhone === activePhone)) ||
+        (activeEmail && (f.ownerEmail === activeEmail || f.ownerEmailOrPhone === activeEmail)) ||
+        (activePhoneOrEmail && (f.ownerPhone === activePhoneOrEmail || f.ownerEmailOrPhone === activePhoneOrEmail)))
       );
       const fileMap = new Map<string, StorageFile>();
       // Preload current instant sync cache
@@ -780,15 +793,18 @@ export default function App() {
         if (!f.ownerId || f.ownerId === 'default') {
           f.ownerId = userId;
         }
-        if (!f.ownerPhone && activePhoneOrEmail) {
-          f.ownerPhone = activePhoneOrEmail;
+        if (!f.ownerPhone && activePhone) {
+          f.ownerPhone = activePhone;
+        }
+        if (!f.ownerEmail && activeEmail) {
+          f.ownerEmail = activeEmail;
         }
         const existing = fileMap.get(f.id);
         fileMap.set(f.id, { ...existing, ...f, dataUrl: f.dataUrl || existing?.dataUrl });
       });
 
-      // 2. Fetch cloud files from Firestore (Dual-Key: matches by userId AND phone number)
-      const cloudFiles = await loadUserFilesFromFirestore(userId, activePhoneOrEmail);
+      // 2. Fetch cloud files from Firestore (matches by userId, phone, and email)
+      const cloudFiles = await loadUserFilesFromFirestore(userId, activePhoneOrEmail, activeEmail);
 
       let hasNewCloudFiles = false;
       const filesToPushToCloud: StorageFile[] = [];
@@ -842,7 +858,7 @@ export default function App() {
 
       // Back up local files to cloud
       if (filesToPushToCloud.length > 0) {
-        saveMultipleFilesToFirestore(filesToPushToCloud, activePhoneOrEmail).catch(() => {});
+        saveMultipleFilesToFirestore(filesToPushToCloud, activePhoneOrEmail, activeEmail).catch(() => {});
       }
 
       // Asynchronously assemble chunks for any cloud files in background without blocking UI
@@ -894,13 +910,18 @@ export default function App() {
     );
 
     // Fast IndexedDB hydration (<10ms)
+    const userPhone = (user.phone || (user.emailOrPhone && isPhoneNumber(user.emailOrPhone) ? normalizePhone(user.emailOrPhone) : '')).trim();
+    const userEmail = (user.email || (user.emailOrPhone && isEmail(user.emailOrPhone) ? normalizeEmail(user.emailOrPhone) : '')).trim();
+
     getAllStoredFiles().then(stored => {
       const userLocals = stored.filter(f => 
         !deletedIdSet.has(f.id) &&
         (!f.ownerId || 
         f.ownerId === user.id || 
         f.ownerId === 'default' || 
-        (user.emailOrPhone && f.ownerPhone === user.emailOrPhone))
+        (userPhone && (f.ownerPhone === userPhone || f.ownerEmailOrPhone === userPhone)) ||
+        (userEmail && (f.ownerEmail === userEmail || f.ownerEmailOrPhone === userEmail)) ||
+        (user.emailOrPhone && (f.ownerPhone === user.emailOrPhone || f.ownerEmailOrPhone === user.emailOrPhone)))
       );
       if (userLocals.length > 0) {
         setFiles(prev => {
@@ -989,6 +1010,9 @@ export default function App() {
         return;
       }
       try {
+        const curPhone = (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
+        const curEmail = (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
+
         // Instant synchronous fallback if files state hasn't populated yet
         const immediate = getUserFilesSync(currentUser.id, currentUser.emailOrPhone);
         if (immediate.length > 0) {
@@ -1001,14 +1025,19 @@ export default function App() {
           !f.ownerId || 
           f.ownerId === currentUser.id || 
           f.ownerId === 'default' || 
-          (currentUser.emailOrPhone && f.ownerPhone === currentUser.emailOrPhone)
+          (curPhone && (f.ownerPhone === curPhone || f.ownerEmailOrPhone === curPhone)) ||
+          (curEmail && (f.ownerEmail === curEmail || f.ownerEmailOrPhone === curEmail)) ||
+          (currentUser.emailOrPhone && (f.ownerPhone === currentUser.emailOrPhone || f.ownerEmailOrPhone === currentUser.emailOrPhone))
         );
         userFiles.forEach(f => {
           if (!f.ownerId || f.ownerId === 'default') {
             f.ownerId = currentUser.id;
           }
-          if (!f.ownerPhone && currentUser.emailOrPhone) {
-            f.ownerPhone = currentUser.emailOrPhone;
+          if (!f.ownerPhone && curPhone) {
+            f.ownerPhone = curPhone;
+          }
+          if (!f.ownerEmail && curEmail) {
+            f.ownerEmail = curEmail;
           }
         });
         if (userFiles.length > 0) {
@@ -1028,11 +1057,11 @@ export default function App() {
       } catch (err) {
         console.error('Local storage load notice:', err);
       }
-      // Cross-browser cloud sync with phone matching
+      // Cross-browser cloud sync with phone and email matching
       await syncUserFiles(currentUser.id, false, currentUser.emailOrPhone);
     }
     loadData();
-  }, [currentUser?.id, currentUser?.emailOrPhone]);
+  }, [currentUser?.id, currentUser?.emailOrPhone, currentUser?.phone, currentUser?.email]);
 
   // Compute Storage Stats (out of 1000 GB)
   const stats: StorageStats = useMemo(() => {
@@ -1148,13 +1177,14 @@ export default function App() {
       isEncrypted: false,
       inTrash: false,
       ownerId: currentUser.id,
-      ownerPhone: currentUser.emailOrPhone,
+      ownerPhone: currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : ''),
+      ownerEmail: currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : ''),
       isFolder: true,
       folderId: currentFolderId || null
     };
 
     saveStoredFile(newFolder).catch(err => console.error(err));
-    saveFileToFirestore(newFolder, currentUser.emailOrPhone).catch(() => {});
+    saveFileToFirestore(newFolder, currentUser.emailOrPhone, currentUser.email).catch(() => {});
     setFiles(prev => [newFolder, ...prev]);
     showToast(lang === 'bn' ? `"${newFolder.name}" ফোল্ডার তৈরি হয়েছে!` : `Folder "${newFolder.name}" created!`);
     return newFolder;
@@ -1167,13 +1197,16 @@ export default function App() {
       showToast(lang === 'bn' ? '১ মাস ফ্রি ব্যবহারের মেয়াদ শেষ! ফাইল সংরক্ষণ করতে ১০০ টাকা সেন্ড মানি করুন।' : 'Trial expired. Please send 100 Tk.', 'error');
       return;
     }
+    const curPhone = currentUser ? (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')) : '';
+    const curEmail = currentUser ? (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')) : '';
     const enriched = {
       ...newFile,
       ownerId: newFile.ownerId || (currentUser ? currentUser.id : 'default'),
-      ownerPhone: newFile.ownerPhone || (currentUser ? currentUser.emailOrPhone : '')
+      ownerPhone: newFile.ownerPhone || curPhone,
+      ownerEmail: newFile.ownerEmail || curEmail
     };
     await saveStoredFile(enriched);
-    saveFileToFirestore(enriched, currentUser?.emailOrPhone).catch(() => {});
+    saveFileToFirestore(enriched, currentUser?.emailOrPhone, curEmail).catch(() => {});
     setFiles(prev => [enriched, ...prev]);
     showToast(lang === 'bn' ? `"${enriched.name}" ফাইল তৈরি হয়েছে!` : `File "${enriched.name}" created!`);
   };
@@ -1695,11 +1728,13 @@ export default function App() {
       return;
     }
     const ownerId = currentUser ? currentUser.id : 'default';
-    const ownerPhone = currentUser ? currentUser.emailOrPhone : '';
+    const ownerPhone = currentUser ? (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')) : '';
+    const ownerEmail = currentUser ? (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')) : '';
     const enrichedFiles = newFiles.map(f => ({
       ...f,
       ownerId: f.ownerId || ownerId,
-      ownerPhone: f.ownerPhone || ownerPhone
+      ownerPhone: f.ownerPhone || ownerPhone,
+      ownerEmail: f.ownerEmail || ownerEmail
     }));
 
     // 1. Instant optimistic state update
@@ -1720,7 +1755,7 @@ export default function App() {
     }
 
     // 3. Guaranteed permanent cloud collection to Firestore Cloud
-    saveMultipleFilesToFirestore(enrichedFiles, ownerPhone).catch((err) => {
+    saveMultipleFilesToFirestore(enrichedFiles, ownerPhone, ownerEmail).catch((err) => {
       console.warn('Firestore cloud sync notice:', err);
     });
 
@@ -1749,6 +1784,9 @@ export default function App() {
     showToast(lang === 'bn' ? '⚡ টার্বো স্পিডে ফাইল প্রসেস হচ্ছে...' : '⚡ Processing at turbo speed...', 'info');
 
     try {
+      const curPhone = (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
+      const curEmail = (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
+
       const readSingle = async (file: File, idx: number): Promise<StorageFile> => {
         let dataUrl = '';
         try {
@@ -1770,7 +1808,8 @@ export default function App() {
           isEncrypted: false,
           inTrash: false,
           ownerId: currentUser.id,
-          ownerPhone: currentUser.emailOrPhone,
+          ownerPhone: curPhone,
+          ownerEmail: curEmail,
           folderId: currentFolderId || null,
           shared: { isShared: false }
         };
@@ -2032,6 +2071,7 @@ export default function App() {
               handleDirectDropFiles(e);
             }
           }}
+          ref={mainScrollRef}
           className="flex-1 flex flex-col min-w-0 bg-slate-950/50 overflow-y-auto relative"
         >
           {/* Turbo Drag & Drop Overlay */}
@@ -2245,71 +2285,29 @@ export default function App() {
                   </div>
                 )}
               </div>
-            ) : viewMode === 'grid' ? (
-              /* Grid View */
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {filteredFiles.map(file => (
-                  <FileCard
-                    key={file.id}
-                    file={file}
-                    isSelected={selectedFileIds.has(file.id)}
-                    onToggleSelect={handleToggleSelect}
-                    onPreview={handlePreviewFile}
-                    onDownload={handleDownloadFile}
-                    onShare={setShareFile}
-                    onDelete={handleDeleteFile}
-                    onToggleStar={handleToggleStar}
-                    onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
-                    onRestore={handleRestoreFile}
-                    onOpenFolder={handleOpenFolder}
-                    onQuickMove={handleOpenMoveModal}
-                    onQuickCopy={handleOpenCopyModal}
-                    onDropIntoFolder={handleDropIntoFolder}
-                    onFolderContextMenu={handleFolderContextMenu}
-                    isTrash={activeTab === 'trash'}
-                    lang={lang}
-                  />
-                ))}
-              </div>
             ) : (
-              /* List / Table View */
-              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="py-3 px-4 w-10"></th>
-                      <th className="py-3 px-4">{lang === 'bn' ? 'ফাইল নাম' : 'File Name'}</th>
-                      <th className="py-3 px-4">{lang === 'bn' ? 'সাইজ' : 'Size'}</th>
-                      <th className="py-3 px-4 hidden md:table-cell">{lang === 'bn' ? 'আপলোড তারিখ' : 'Uploaded'}</th>
-                      <th className="py-3 px-4 text-right">{lang === 'bn' ? 'অ্যাকশন' : 'Actions'}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredFiles.map(file => (
-                      <FileListRow
-                        key={file.id}
-                        file={file}
-                        isSelected={selectedFileIds.has(file.id)}
-                        onToggleSelect={handleToggleSelect}
-                        onPreview={handlePreviewFile}
-                        onDownload={handleDownloadFile}
-                        onShare={setShareFile}
-                        onDelete={handleDeleteFile}
-                        onToggleStar={handleToggleStar}
-                        onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
-                        onRestore={handleRestoreFile}
-                        onOpenFolder={handleOpenFolder}
-                        onQuickMove={handleOpenMoveModal}
-                        onQuickCopy={handleOpenCopyModal}
-                        onDropIntoFolder={handleDropIntoFolder}
-                        onFolderContextMenu={handleFolderContextMenu}
-                        isTrash={activeTab === 'trash'}
-                        lang={lang}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              /* Virtualized Grid / List View (Windowed rendering to prevent DOM bloat and page unresponsiveness) */
+              <VirtualizedFileList
+                files={filteredFiles}
+                viewMode={viewMode}
+                selectedFileIds={selectedFileIds}
+                onToggleSelect={handleToggleSelect}
+                onPreview={handlePreviewFile}
+                onDownload={handleDownloadFile}
+                onShare={setShareFile}
+                onDelete={handleDeleteFile}
+                onToggleStar={handleToggleStar}
+                onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
+                onRestore={handleRestoreFile}
+                onOpenFolder={handleOpenFolder}
+                onQuickMove={handleOpenMoveModal}
+                onQuickCopy={handleOpenCopyModal}
+                onDropIntoFolder={handleDropIntoFolder}
+                onFolderContextMenu={handleFolderContextMenu}
+                isTrash={activeTab === 'trash'}
+                lang={lang}
+                scrollContainerRef={mainScrollRef}
+              />
             )}
           </div>
         </main>

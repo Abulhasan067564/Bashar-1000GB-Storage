@@ -91,7 +91,39 @@ export function getNormalizedAccountIdentifier(input: string): { type: 'email' |
  * Checks if two identifiers represent the exact same email or mobile number
  */
 export function isSameEmailOrPhone(inputA: string, inputB: string): boolean {
+  if (!inputA || !inputB) return false;
   const normA = getNormalizedAccountIdentifier(inputA);
   const normB = getNormalizedAccountIdentifier(inputB);
-  return normA.key === normB.key;
+  if (normA.key === normB.key) return true;
+
+  // Direct normalized phone match
+  if (isPhoneNumber(inputA) && isPhoneNumber(inputB)) {
+    return normalizePhone(inputA) === normalizePhone(inputB);
+  }
+
+  // Direct normalized email match
+  if (isEmail(inputA) && isEmail(inputB)) {
+    return normalizeEmail(inputA) === normalizeEmail(inputB);
+  }
+
+  return inputA.trim().toLowerCase() === inputB.trim().toLowerCase();
+}
+
+/**
+ * Checks if a given input identifier (phone OR email) matches a user's account
+ * Enables login using EITHER phone number OR gmail address with the same password!
+ */
+export function matchesUserAccount(
+  user: { emailOrPhone?: string; phone?: string; email?: string },
+  identifier: string
+): boolean {
+  if (!user || !identifier) return false;
+  const clean = identifier.trim();
+  if (!clean) return false;
+
+  if (user.phone && isSameEmailOrPhone(user.phone, clean)) return true;
+  if (user.email && isSameEmailOrPhone(user.email, clean)) return true;
+  if (user.emailOrPhone && isSameEmailOrPhone(user.emailOrPhone, clean)) return true;
+
+  return false;
 }

@@ -86,3 +86,73 @@ export async function safeReadFileAsDataUrl(file: File | Blob): Promise<string> 
   // Stage 4: Graceful safe fallback if file permission was lost on OS level
   return '';
 }
+
+/**
+ * Converts a data URL to a temporary Blob URL for native OS drag-out downloads
+ */
+export function dataUrlToBlobUrl(dataUrl: string, defaultMime = 'application/octet-stream'): string {
+  try {
+    if (dataUrl.startsWith('blob:')) return dataUrl;
+    if (!dataUrl.startsWith('data:')) return dataUrl;
+
+    const parts = dataUrl.split(',');
+    const byteString = atob(parts[1]);
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : defaultMime;
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([ab], { type: mime });
+    return URL.createObjectURL(blob);
+  } catch {
+    return dataUrl;
+  }
+}
+
+/**
+ * Configures the HTML5 Drag and Drop dataTransfer payload so dragging a file
+ * from the web app directly to the computer desktop or a local file folder
+ * triggers an immediate file download by the operating system/browser.
+ */
+export function setupDesktopDragDownload(
+  e: React.DragEvent,
+  file: {
+    id: string;
+    name: string;
+    size: number;
+    type?: string;
+    dataUrl?: string;
+    isFolder?: boolean;
+    inTrash?: boolean;
+  }
+): void {
+  // 1. Internal application drag data (for moving into folders or batch operations)
+  e.dataTransfer.setData('text/plain', file.id);
+  e.dataTransfer.effectAllowed = 'copyMove';
+
+  if (file.isFolder || file.inTrash) return;
+
+  try {
+    const mime = file.type || 'application/octet-stream';
+    const fileName = file.name || 'download';
+
+    let downloadUrl = '';
+    if (file.dataUrl) {
+      downloadUrl = dataUrlToBlobUrl(file.dataUrl, mime);
+    } else {
+      // Direct server or fallback link if available
+      downloadUrl = `${window.location.origin}/api/download/${encodeURIComponent(file.id)}?name=${encodeURIComponent(fileName)}`;
+    }
+
+    if (downloadUrl) {
+      // Chromium HTML5 Drag-Out specification: DownloadURL = "mimeType:fileName:downloadUrl"
+      e.dataTransfer.setData('DownloadURL', `${mime}:${fileName}:${downloadUrl}`);
+      // URI-List for standard file drop targets
+      e.dataTransfer.setData('text/uri-list', downloadUrl);
+    }
+  } catch (err) {
+    console.warn('HTML5 drag-out desktop download initialization warning:', err);
+  }
+}

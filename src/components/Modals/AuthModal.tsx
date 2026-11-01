@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 import { UserAccount } from '../../types/storage';
-import { Lock, User, KeyRound, HelpCircle, CheckCircle2, AlertCircle, X, Sparkles, Loader2, ArrowRight } from 'lucide-react';
-import { isSameEmailOrPhone, convertBengaliDigitsToEnglish } from '../../utils/accountValidation';
+import { Lock, User, Phone, Mail, KeyRound, HelpCircle, CheckCircle2, AlertCircle, X, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { 
+  isSameEmailOrPhone, 
+  matchesUserAccount,
+  isEmail, 
+  normalizeEmail,
+  isPhoneNumber, 
+  normalizePhone,
+  convertBengaliDigitsToEnglish 
+} from '../../utils/accountValidation';
 import { removeDeletedUserId, findUserInFirestore, saveUserToFirestore } from '../../services/firebase';
 
 interface AuthModalProps {
@@ -24,6 +32,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   lang
 }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -42,7 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const rawInput = emailOrPhone.trim();
     if (!rawInput) {
-      setError(lang === 'bn' ? 'অনুগ্রহ করে ইমেইল বা মোবাইল নম্বর দিন।' : 'Please enter email or phone.');
+      setError(lang === 'bn' ? 'অনুগ্রহ করে মোবাইল নম্বর অথবা জিমেইল দিন।' : 'Please enter mobile number or Gmail.');
       return;
     }
     if (!password) {
@@ -52,11 +62,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const cleanInput = convertBengaliDigitsToEnglish(rawInput);
 
-    // 1. Instant check in memory (0ms)
-    let user = usersList.find(
-      u => isSameEmailOrPhone(u.emailOrPhone, cleanInput) ||
-           u.emailOrPhone.trim().toLowerCase() === cleanInput.toLowerCase()
-    );
+    // 1. Instant check in memory with dual phone/email matching
+    let user = usersList.find(u => matchesUserAccount(u, cleanInput));
 
     // 2. Query Firestore for cloud sync (or if not found locally)
     try {
@@ -81,8 +88,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (!user) {
       setError(
         lang === 'bn' 
-          ? 'এই ইমেইল বা ফোন নম্বরের কোনো একাউন্ট পাওয়া যায়নি। প্রথমে "নতুন একাউন্ট" থেকে সাইন আপ করুন।' 
-          : 'No account found with this email or phone. Please sign up first.'
+          ? 'এই মোবাইল নম্বর বা জিমেইলের কোনো একাউন্ট পাওয়া যায়নি। প্রথমে "নতুন একাউন্ট" থেকে সাইন আপ করুন।' 
+          : 'No account found with this phone or Gmail. Please sign up first.'
       );
       return;
     }
@@ -113,9 +120,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const rawInput = emailOrPhone.trim();
-    if (!rawInput) {
-      setError(lang === 'bn' ? 'অনুগ্রহ করে ইমেইল বা ফোন নম্বর দিন।' : 'Please enter email or phone.');
+    const rawPhone = phone.trim();
+    const rawEmail = email.trim();
+
+    // Mandatory: BOTH Phone and Gmail must be entered
+    if (!rawPhone || !rawEmail) {
+      setError(
+        lang === 'bn' 
+          ? 'অনুগ্রহ করে মোবাইল নম্বর এবং জিমেইল উভয়টি দিন।' 
+          : 'Please enter both mobile number and Gmail address.'
+      );
       return;
     }
     if (!password.trim()) {
@@ -123,18 +137,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const cleanIdent = convertBengaliDigitsToEnglish(rawInput);
+    const cleanPhone = convertBengaliDigitsToEnglish(rawPhone);
+    const cleanEmail = rawEmail.toLowerCase();
 
-    // Check existing in local cache
-    const existing = usersList.find(
-      u => isSameEmailOrPhone(u.emailOrPhone, cleanIdent) ||
-           u.emailOrPhone.trim().toLowerCase() === cleanIdent.toLowerCase()
-    );
-    if (existing) {
+    if (!isPhoneNumber(cleanPhone)) {
       setError(
         lang === 'bn' 
-          ? 'এই ইমেইল বা মোবাইল নম্বর ইতিমধ্যে নিবন্ধিত আছে। দয়া করে লগইন করুন।' 
-          : 'Email or phone already registered. Please sign in.'
+          ? 'অনুগ্রহ করে একটি সঠিক মোবাইল নম্বর লিখুন (যেমন: 017xxxxxxxx)।' 
+          : 'Please enter a valid mobile number (e.g. 017xxxxxxxx).'
+      );
+      return;
+    }
+
+    if (!isEmail(cleanEmail)) {
+      setError(
+        lang === 'bn' 
+          ? 'অনুগ্রহ করে একটি সঠিক জিমেইল বা ইমেইল ঠিকানা লিখুন (যেমন: user@gmail.com)।' 
+          : 'Please enter a valid Gmail / Email address (e.g. user@gmail.com).'
+      );
+      return;
+    }
+
+    const normPhone = normalizePhone(cleanPhone);
+    const normEmail = normalizeEmail(cleanEmail);
+
+    // Check existing in local cache by phone or email
+    const existingPhone = usersList.find(u => matchesUserAccount(u, normPhone));
+    if (existingPhone) {
+      setError(
+        lang === 'bn' 
+          ? 'এই মোবাইল নম্বর ইতিমধ্যে নিবন্ধিত আছে। দয়া করে লগইন করুন।' 
+          : 'Mobile number already registered. Please sign in.'
+      );
+      return;
+    }
+
+    const existingEmail = usersList.find(u => matchesUserAccount(u, normEmail));
+    if (existingEmail) {
+      setError(
+        lang === 'bn' 
+          ? 'এই জিমেইল ঠিকানা ইতিমধ্যে নিবন্ধিত আছে। দয়া করে লগইন করুন।' 
+          : 'Gmail address already registered. Please sign in.'
       );
       return;
     }
@@ -142,25 +185,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSubmitting(true);
     try {
       // Fast check Firestore cloud to avoid duplication across devices
-      const cloudUser = await findUserInFirestore(cleanIdent);
-      if (cloudUser) {
+      const cloudUserPhone = await findUserInFirestore(normPhone);
+      if (cloudUserPhone) {
         setError(
           lang === 'bn'
-            ? 'এই একাউন্টটি ইতিমধ্যে ক্লাউডে বিদ্যমান। অনুগ্রহ করে লগইন করুন।'
-            : 'Account already exists. Please sign in.'
+            ? 'এই মোবাইল নম্বর দিয়ে ইতিমধ্যে ক্লাউডে একাউন্ট আছে। অনুগ্রহ করে লগইন করুন।'
+            : 'Account with this phone already exists in cloud. Please sign in.'
         );
         setIsSubmitting(false);
         return;
       }
 
-      const normalizedIdent = cleanIdent.replace(/[\s\-\(\)\+]/g, '').toLowerCase();
-      const newUserId = 'u_' + (normalizedIdent || Date.now());
+      const cloudUserEmail = await findUserInFirestore(normEmail);
+      if (cloudUserEmail) {
+        setError(
+          lang === 'bn'
+            ? 'এই জিমেইল দিয়ে ইতিমধ্যে ক্লাউডে একাউন্ট আছে। অনুগ্রহ করে লগইন করুন।'
+            : 'Account with this Gmail already exists in cloud. Please sign in.'
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      const newUserId = 'u_' + normPhone;
       const cleanSecret = (secretName.trim() || name.trim() || 'bashar1000').toLowerCase();
 
       const newUser: UserAccount = {
         id: newUserId,
         name: name.trim() || (lang === 'bn' ? 'বাশার ইউজার' : 'Bashar User'),
-        emailOrPhone: cleanIdent,
+        phone: normPhone,
+        email: normEmail,
+        emailOrPhone: normPhone,
         secretName: cleanSecret,
         birthDate: birthDate.trim() || undefined,
         passwordHash: password,
@@ -174,7 +229,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       removeDeletedUserId(newUser.id);
       const updated = [...usersList, newUser];
       onUpdateUsersList(updated);
-      saveUserToFirestore(newUser).catch(() => {});
+      await saveUserToFirestore(newUser).catch(() => {});
       onLoginSuccess(newUser);
       onClose();
     } catch (err) {
@@ -190,10 +245,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setError(null);
 
     const cleanInput = convertBengaliDigitsToEnglish(emailOrPhone.trim());
-    let user = usersList.find(
-      u => isSameEmailOrPhone(u.emailOrPhone, cleanInput) ||
-           u.emailOrPhone.trim().toLowerCase() === cleanInput.toLowerCase()
-    );
+    let user = usersList.find(u => matchesUserAccount(u, cleanInput));
 
     if (!user) {
       setIsSubmitting(true);
@@ -206,7 +258,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (!user) {
-      setError(lang === 'bn' ? 'এই একাউন্টটি খুঁজে পাওয়া যায়নি।' : 'Account not found.');
+      setError(lang === 'bn' ? 'এই মোবাইল নম্বর বা জিমেইলের একাউন্টটি খুঁজে পাওয়া যায়নি।' : 'Account not found.');
       return;
     }
 
@@ -293,20 +345,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {mode === 'login' && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                {lang === 'bn' ? 'ইমেইল অথবা মোবাইল নম্বর' : 'Email or Phone Number'}
+              <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{lang === 'bn' ? 'মোবাইল নম্বর অথবা জিমেইল (Phone or Gmail)' : 'Mobile Phone or Gmail'}</span>
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
                 <input
                   type="text"
                   required
                   value={emailOrPhone}
                   onChange={e => setEmailOrPhone(e.target.value)}
-                  placeholder={lang === 'bn' ? 'bashar@example.com বা 017xxxxxxxx' : 'email or phone'}
-                  className="w-full bg-slate-950/70 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none transition"
+                  placeholder={lang === 'bn' ? 'যেমন: 017xxxxxxxx অথবা user@gmail.com' : 'e.g. 017xxxxxxxx or user@gmail.com'}
+                  className="w-full bg-slate-950/70 border border-slate-700 rounded-xl px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none transition"
                 />
               </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {lang === 'bn' ? 'মোবাইল নম্বর অথবা জিমেইল এবং পাসওয়ার্ড দিয়ে লগইন করুন।' : 'Log in using either phone or Gmail with password.'}
+              </p>
             </div>
 
             <div>
@@ -384,18 +439,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               />
             </div>
 
+            {/* MOBILE NUMBER (বাধ্যতামূলক) */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                {lang === 'bn' ? 'ইমেইল অথবা মোবাইল নম্বর' : 'Email or Phone Number'}
+              <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{lang === 'bn' ? 'মোবাইল নম্বর (Phone Number)' : 'Mobile Phone Number'}</span>
+                  <span className="text-red-400 font-bold">*</span>
+                </span>
+                <span className="text-[10px] text-cyan-400 font-medium">{lang === 'bn' ? 'বাধ্যতামূলক' : 'Required'}</span>
               </label>
               <input
-                type="text"
+                type="tel"
                 required
-                value={emailOrPhone}
-                onChange={e => setEmailOrPhone(e.target.value)}
-                placeholder="01712345678 বা user@gmail.com"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder={lang === 'bn' ? 'যেমন: 017xxxxxxxx' : 'e.g. 017xxxxxxxx'}
                 className="w-full bg-slate-950/70 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none"
               />
+            </div>
+
+            {/* GMAIL (বাধ্যতামূলক) */}
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{lang === 'bn' ? 'জিমেইল / ইমেইল (Gmail / Email)' : 'Gmail / Email'}</span>
+                  <span className="text-red-400 font-bold">*</span>
+                </span>
+                <span className="text-[10px] text-blue-400 font-medium">{lang === 'bn' ? 'বাধ্যতামূলক' : 'Required'}</span>
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder={lang === 'bn' ? 'যেমন: user@gmail.com' : 'e.g. user@gmail.com'}
+                className="w-full bg-slate-950/70 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none"
+              />
+              <p className="text-[10px] text-cyan-400/90 mt-1">
+                {lang === 'bn' 
+                  ? '🔒 সাইন আপে নম্বর ও জিমেইল উভয়টি দিতে হবে। পরবর্তীতে যে কোনো একটি দিয়ে লগইন করা যাবে।' 
+                  : 'Both phone and Gmail are required on sign up. You can log in using either!'}
+              </p>
             </div>
 
             <div>
@@ -464,20 +550,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
               {lang === 'bn'
-                ? 'আপনার রেজিস্টার্ড ইমেইল/নম্বর এবং একাউন্ট খোলার সময় দেওয়া গোপন সিক্রেট নামটি লিখুন।'
-                : 'Enter your registered email/phone and secret name used during registration.'}
+                ? 'আপনার রেজিস্টার্ড মোবাইল নম্বর অথবা জিমেইল এবং একাউন্ট খোলার সময় দেওয়া গোপন সিক্রেট নামটি লিখুন।'
+                : 'Enter your registered phone or Gmail and secret name used during registration.'}
             </p>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                {lang === 'bn' ? 'ইমেইল অথবা মোবাইল নম্বর' : 'Email or Phone'}
+                {lang === 'bn' ? 'মোবাইল নম্বর অথবা জিমেইল' : 'Mobile Phone or Gmail'}
               </label>
               <input
                 type="text"
                 required
                 value={emailOrPhone}
                 onChange={e => setEmailOrPhone(e.target.value)}
-                placeholder="bashar@cloud.com"
+                placeholder={lang === 'bn' ? '017xxxxxxxx বা user@gmail.com' : '017xxxxxxxx or user@gmail.com'}
                 className="w-full bg-slate-950/70 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none"
               />
             </div>

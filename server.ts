@@ -270,7 +270,11 @@ async function startServer() {
   if (!isProd) {
     const { createServer } = await import('vite');
     const vite = await createServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false,
+        watch: null
+      },
       appType: 'spa'
     });
     app.use(vite.middlewares);
@@ -282,9 +286,33 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Bashar 1000GB Cloud Storage server running on http://0.0.0.0:${PORT}`);
   });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Server] Port ${PORT} is in use, retrying connection in 1.5s...`);
+      setTimeout(() => {
+        try {
+          server.close();
+        } catch {}
+        server.listen(PORT, '0.0.0.0');
+      }, 1500);
+    } else {
+      console.error('[Server] Server error:', err);
+    }
+  });
+
+  const cleanup = () => {
+    try {
+      server.close();
+    } catch {}
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', cleanup);
+  process.on('SIGINT', cleanup);
 }
 
 startServer();

@@ -27,6 +27,8 @@ export interface StorageFile {
   tags?: string[];
   ownerId: string;
   ownerPhone?: string;
+  ownerEmail?: string;
+  ownerEmailOrPhone?: string;
   folderId?: string | null; // ID of parent folder if inside one, null/undefined if root
   isFolder?: boolean; // true if this item is a folder
   colorLabel?: string; // Color label identifier or hex for folders/files
@@ -72,6 +74,8 @@ export interface UserAccount {
   id: string;
   name: string;
   emailOrPhone: string;
+  phone?: string; // ফোন নম্বর (সাইন আপে বাধ্যতামূলক)
+  email?: string; // জিমেইল / ইমেইল (সাইন আপে বাধ্যতামূলক)
   secretName: string; // সিক্রেট নাম - used for instant password recovery
   passwordHash: string;
   birthDate?: string; // জন্ম তারিখ

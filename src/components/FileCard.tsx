@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StorageFile, getFolderColorStyle } from '../types/storage';
+import { setupDesktopDragDownload } from '../utils/fileReaderHelper';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -113,9 +114,9 @@ export const FileCard: React.FC<FileCardProps> = ({
     }
   };
 
-  // Drag and drop handlers
+  // Drag and drop handlers (Internal folder drop + HTML5 Desktop drag-out download)
   const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData('text/plain', file.id);
+    setupDesktopDragDownload(e, file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {

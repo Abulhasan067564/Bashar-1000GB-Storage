@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Users, 
   ShieldCheck, 
@@ -151,16 +151,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // Auto-refresh users list from Firestore on mount and periodically so newly signed-up accounts appear immediately
+  const onRefreshDataRef = useRef(onRefreshData);
   useEffect(() => {
-    if (onRefreshData) {
-      onRefreshData().catch(() => {});
-      const interval = setInterval(() => {
-        onRefreshData().catch(() => {});
-      }, 8000);
-      return () => clearInterval(interval);
-    }
+    onRefreshDataRef.current = onRefreshData;
   }, [onRefreshData]);
+
+  const isRefreshingSyncRef = useRef(false);
+
+  // Auto-refresh users list from Firestore safely without infinite re-render loops
+  useEffect(() => {
+    const doRefresh = async () => {
+      if (isRefreshingSyncRef.current) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!onRefreshDataRef.current) return;
+      isRefreshingSyncRef.current = true;
+      try {
+        await onRefreshDataRef.current();
+      } catch {} finally {
+        isRefreshingSyncRef.current = false;
+      }
+    };
+
+    // Run once on mount
+    doRefresh();
+
+    // Periodic gentle refresh every 30s
+    const interval = setInterval(doRefresh, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);

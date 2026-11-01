@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { UserAccount, StorageFile, AdminCredentials, SiteSettings, PaymentRequest } from '../types/storage';
 import { getDeletedFileIds } from './indexedDbStorage';
+import { matchesUserAccount, isPhoneNumber, normalizePhone, isEmail, normalizeEmail } from '../utils/accountValidation';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -197,10 +198,16 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
   }
   const path = `users/${user.id}`;
   try {
+    const rawEmailOrPhone = user.emailOrPhone || '';
+    const phoneVal = user.phone || (isPhoneNumber(rawEmailOrPhone) ? normalizePhone(rawEmailOrPhone) : '');
+    const emailVal = user.email || (isEmail(rawEmailOrPhone) ? normalizeEmail(rawEmailOrPhone) : '');
+
     await setDoc(doc(db, 'users', user.id), {
       id: user.id,
       name: user.name,
-      emailOrPhone: user.emailOrPhone,
+      phone: phoneVal,
+      email: emailVal,
+      emailOrPhone: rawEmailOrPhone || phoneVal || emailVal,
       secretName: user.secretName,
       passwordHash: user.passwordHash,
       birthDate: user.birthDate || '',
@@ -259,9 +266,9 @@ export async function getUserFromFirestoreById(userId: string): Promise<UserAcco
   return null;
 }
 
-// Direct lookup for user in Firestore across any browser or device
+// Direct lookup for user in Firestore across any browser or device (by phone OR gmail)
 export async function findUserInFirestore(identifier: string): Promise<UserAccount | null> {
-  const clean = identifier.trim().toLowerCase();
+  const clean = identifier.trim();
   if (!clean) return null;
   const deletedIds = new Set(getDeletedUserIds());
 
@@ -271,11 +278,7 @@ export async function findUserInFirestore(identifier: string): Promise<UserAccou
     snapshot.forEach((d) => {
       const u = d.data() as UserAccount;
       if (u && u.id && !deletedIds.has(u.id)) {
-        const uEmailOrPhone = (u.emailOrPhone || '').trim().toLowerCase();
-        // Remove spaces, dashes, +88 prefix for phone comparison
-        const normU = uEmailOrPhone.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
-        const normInput = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
-        if (normU === normInput || uEmailOrPhone === clean) {
+        if (matchesUserAccount(u, clean)) {
           found = {
             ...u,
             isLifetimeUnlocked: Boolean(u.isLifetimeUnlocked)
@@ -385,11 +388,18 @@ export async function loadFileChunksFromFirestore(fileId: string, totalChunks: n
   }
 }
 
-// Save or update file metadata & content to Firestore (Cross-device aware)
-export async function saveFileToFirestore(file: StorageFile, userPhoneOrEmail?: string): Promise<void> {
+// Save or update file metadata & content to Firestore (Cross-device aware with dual phone/email keys)
+export async function saveFileToFirestore(
+  file: StorageFile, 
+  userPhoneOrEmail?: string,
+  userEmail?: string
+): Promise<void> {
   const path = `files/${file.id}`;
   try {
-    const cleanPhone = (file.ownerPhone || userPhoneOrEmail || '').trim();
+    const rawIdent = userPhoneOrEmail || '';
+    const cleanPhone = (file.ownerPhone || (isPhoneNumber(rawIdent) ? normalizePhone(rawIdent) : '')).trim();
+    const cleanEmail = (file.ownerEmail || (isEmail(rawIdent) ? normalizeEmail(rawIdent) : '') || (userEmail ? normalizeEmail(userEmail) : '')).trim();
+
     const filePayload: Record<string, any> = {
       id: file.id,
       name: file.name || 'Untitled',
@@ -404,7 +414,8 @@ export async function saveFileToFirestore(file: StorageFile, userPhoneOrEmail?: 
       inTrash: Boolean(file.inTrash),
       ownerId: file.ownerId || 'default',
       ownerPhone: cleanPhone,
-      ownerEmailOrPhone: cleanPhone,
+      ownerEmail: cleanEmail,
+      ownerEmailOrPhone: cleanPhone || cleanEmail || rawIdent.trim(),
       shared: file.shared || { isShared: false }
     };
 
@@ -448,10 +459,16 @@ export async function saveFileToFirestore(file: StorageFile, userPhoneOrEmail?: 
 }
 
 // Fast batch save multiple files to Firestore in a single network round-trip with individual fallback
-export async function saveMultipleFilesToFirestore(files: StorageFile[], userPhoneOrEmail?: string): Promise<void> {
+export async function saveMultipleFilesToFirestore(
+  files: StorageFile[], 
+  userPhoneOrEmail?: string,
+  userEmail?: string
+): Promise<void> {
   if (files.length === 0) return;
   const path = 'files/batch';
-  const cleanPhone = (userPhoneOrEmail || '').trim();
+  const rawIdent = userPhoneOrEmail || '';
+  const cleanPhone = (isPhoneNumber(rawIdent) ? normalizePhone(rawIdent) : rawIdent).trim();
+  const cleanEmail = (isEmail(rawIdent) ? normalizeEmail(rawIdent) : (userEmail ? normalizeEmail(userEmail) : '')).trim();
 
   try {
     const BATCH_LIMIT = 50;
@@ -460,6 +477,7 @@ export async function saveMultipleFilesToFirestore(files: StorageFile[], userPho
       const batch = writeBatch(db);
       for (const file of slice) {
         const phone = (file.ownerPhone || cleanPhone).trim();
+        const email = (file.ownerEmail || cleanEmail).trim();
         const filePayload: Record<string, any> = {
           id: file.id,
           name: file.name || 'Untitled',
@@ -474,7 +492,8 @@ export async function saveMultipleFilesToFirestore(files: StorageFile[], userPho
           inTrash: Boolean(file.inTrash),
           ownerId: file.ownerId || 'default',
           ownerPhone: phone,
-          ownerEmailOrPhone: phone,
+          ownerEmail: email,
+          ownerEmailOrPhone: phone || email || rawIdent.trim(),
           shared: file.shared || { isShared: false }
         };
         if (file.tags) filePayload.tags = file.tags;
@@ -494,7 +513,7 @@ export async function saveMultipleFilesToFirestore(files: StorageFile[], userPho
       } catch (batchErr) {
         console.warn('Batch commit notice, writing files individually:', batchErr);
         for (const file of slice) {
-          await saveFileToFirestore(file, userPhoneOrEmail).catch(() => {});
+          await saveFileToFirestore(file, userPhoneOrEmail, userEmail).catch(() => {});
         }
       }
 
@@ -532,8 +551,12 @@ export async function deleteFileFromFirestore(fileId: string): Promise<void> {
   }
 }
 
-// Load user files from Firestore (Dual-Key: matches by ownerId OR ownerPhone/email across all websites & devices)
-export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmail?: string): Promise<StorageFile[]> {
+// Load user files from Firestore (Dual-Key: matches by ownerId OR ownerPhone OR ownerEmail across all websites & devices)
+export async function loadUserFilesFromFirestore(
+  userId: string, 
+  userPhoneOrEmail?: string,
+  userEmail?: string
+): Promise<StorageFile[]> {
   const path = 'files';
   const fileMap = new Map<string, StorageFile>();
 
@@ -558,6 +581,17 @@ export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmai
         queries.push(query(collection(db, path), where('ownerPhone', '==', '0' + norm)));
         queries.push(query(collection(db, path), where('ownerPhone', '==', '+88' + norm)));
       }
+
+      if (isEmail(clean)) {
+        queries.push(query(collection(db, path), where('ownerEmail', '==', normalizeEmail(clean))));
+      }
+    }
+
+    // 3. Query by ownerEmail directly if passed
+    if (userEmail && userEmail.trim()) {
+      const cleanEm = normalizeEmail(userEmail);
+      queries.push(query(collection(db, path), where('ownerEmail', '==', cleanEm)));
+      queries.push(query(collection(db, path), where('ownerEmailOrPhone', '==', cleanEm)));
     }
 
     // Execute ALL Firestore queries concurrently in parallel for maximum speed
@@ -579,7 +613,14 @@ export async function loadUserFilesFromFirestore(userId: string, userPhoneOrEmai
     const list = Array.from(fileMap.values());
     if (userId) {
       try {
-        localStorage.setItem(`bashar_cloud_files_${userId}`, JSON.stringify(list));
+        const lightweightList = list.map(f => {
+          if (f.dataUrl && f.dataUrl.length > 8192) {
+            const { dataUrl, ...rest } = f;
+            return rest;
+          }
+          return f;
+        });
+        localStorage.setItem(`bashar_cloud_files_${userId}`, JSON.stringify(lightweightList));
       } catch {}
     }
     return list;
