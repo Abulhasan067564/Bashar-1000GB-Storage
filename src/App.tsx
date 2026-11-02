@@ -60,6 +60,7 @@ import {
 } from './utils/accountValidation';
 import { downloadSingleFile, downloadFilesAsZip } from './services/zipService';
 import { safeReadFileAsDataUrl } from './utils/fileReaderHelper';
+import { compressImage } from './utils/fileCompressor';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { ActionBar } from './components/ActionBar';
@@ -760,11 +761,17 @@ export default function App() {
   };
 
   // Seamless cross-browser and cross-device sync between local IndexedDB and Firestore Cloud
-  const syncUserFiles = async (userId: string, isManual = false, userEmailOrPhone?: string) => {
+  const syncUserFiles = async (
+    userId: string, 
+    isManual = false, 
+    userPhone?: string, 
+    userEmail?: string, 
+    userEmailOrPhone?: string
+  ) => {
     setIsSyncingFiles(true);
     try {
-      const activePhone = (currentUser?.phone || (currentUser?.emailOrPhone && isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
-      const activeEmail = (currentUser?.email || (currentUser?.emailOrPhone && isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
+      const activePhone = (userPhone || currentUser?.phone || (currentUser?.emailOrPhone && isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
+      const activeEmail = (userEmail || currentUser?.email || (currentUser?.emailOrPhone && isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
       const activePhoneOrEmail = (userEmailOrPhone || activePhone || activeEmail || currentUser?.emailOrPhone || '').trim();
       const deletedIdSet = new Set(getDeletedFileIds());
 
@@ -803,8 +810,8 @@ export default function App() {
         fileMap.set(f.id, { ...existing, ...f, dataUrl: f.dataUrl || existing?.dataUrl });
       });
 
-      // 2. Fetch cloud files from Firestore (matches by userId, phone, and email)
-      const cloudFiles = await loadUserFilesFromFirestore(userId, activePhoneOrEmail, activeEmail);
+      // 2. Fetch cloud files from Firestore (matches by userId, phone, and email across all devices/pages)
+      const cloudFiles = await loadUserFilesFromFirestore(userId, activePhoneOrEmail, activeEmail, activePhone);
 
       let hasNewCloudFiles = false;
       const filesToPushToCloud: StorageFile[] = [];
@@ -905,8 +912,8 @@ export default function App() {
     saveUserToFirestore(user).catch(() => {});
     showToast(
       lang === 'bn' 
-        ? `স্বাগতম, ${user.name}! প্রোফাইলে গিয়ে লোগো, নাম, জন্ম তারিখ ও পাসওয়ার্ড সেট করতে পারেন।` 
-        : `Welcome, ${user.name}! Customize your logo, name, birthday & password in Profile.`
+        ? `স্বাগতম, ${user.name}! আপনার সকল ফাইল লোড হচ্ছে...` 
+        : `Welcome, ${user.name}! Loading all your files...`
     );
 
     // Fast IndexedDB hydration (<10ms)
@@ -942,8 +949,8 @@ export default function App() {
       }
     }).catch(() => {});
 
-    // Silent background sync with Firestore (non-blocking)
-    syncUserFiles(user.id, false, user.emailOrPhone);
+    // Guaranteed full cross-device cloud sync with all identifiers passed explicitly
+    syncUserFiles(user.id, false, userPhone, userEmail, user.emailOrPhone);
   };
 
   const handleLogout = () => {
@@ -1009,10 +1016,10 @@ export default function App() {
         setFiles([]);
         return;
       }
-      try {
-        const curPhone = (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
-        const curEmail = (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
+      const curPhone = (currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')).trim();
+      const curEmail = (currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')).trim();
 
+      try {
         // Instant synchronous fallback if files state hasn't populated yet
         const immediate = getUserFilesSync(currentUser.id, currentUser.emailOrPhone);
         if (immediate.length > 0) {
@@ -1058,10 +1065,56 @@ export default function App() {
         console.error('Local storage load notice:', err);
       }
       // Cross-browser cloud sync with phone and email matching
-      await syncUserFiles(currentUser.id, false, currentUser.emailOrPhone);
+      await syncUserFiles(currentUser.id, false, curPhone, curEmail, currentUser.emailOrPhone);
     }
     loadData();
   }, [currentUser?.id, currentUser?.emailOrPhone, currentUser?.phone, currentUser?.email]);
+
+  // Real-time synchronization across different tabs/pages of the browser
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_SESSION_KEY) {
+        const activeId = localStorage.getItem(STORAGE_SESSION_KEY);
+        if (!activeId) {
+          setCurrentUser(null);
+          setFiles([]);
+        } else {
+          try {
+            const savedUsers = localStorage.getItem(STORAGE_USERS_KEY);
+            if (savedUsers) {
+              const list: UserAccount[] = JSON.parse(savedUsers);
+              const found = list.find(u => u.id === activeId);
+              if (found) {
+                setCurrentUser(found);
+                syncUserFiles(found.id, false, found.phone, found.email, found.emailOrPhone);
+              }
+            }
+          } catch {}
+        }
+      } else if (e.key === STORAGE_USERS_KEY && e.newValue) {
+        try {
+          const list: UserAccount[] = JSON.parse(e.newValue);
+          setUsersList(list);
+          if (currentUser) {
+            const updated = list.find(u => u.id === currentUser.id);
+            if (updated) setCurrentUser(updated);
+          }
+        } catch {}
+      } else if (currentUser && e.key === `bashar_cloud_files_${currentUser.id}`) {
+        try {
+          const cachedFiles = getUserFilesSync(currentUser.id, currentUser.emailOrPhone);
+          if (cachedFiles.length > 0) {
+            setFiles(cachedFiles);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [currentUser?.id, currentUser?.emailOrPhone]);
 
   // Compute Storage Stats (out of 1000 GB)
   const stats: StorageStats = useMemo(() => {
@@ -1682,6 +1735,106 @@ export default function App() {
     setFiles(prev => prev.map(f => f.id === file.id ? updated : f));
   };
 
+  // Batch Toggle Star for multiple selected files
+  const handleBatchToggleStar = async (starred: boolean) => {
+    if (selectedFileIds.size === 0) return;
+    const targetIds = Array.from(selectedFileIds);
+    const now = new Date().toISOString();
+    const updatedList: StorageFile[] = [];
+
+    const newFiles = files.map(f => {
+      if (targetIds.includes(f.id)) {
+        const upd: StorageFile = {
+          ...f,
+          isStarred: starred,
+          updatedAt: now
+        };
+        updatedList.push(upd);
+        return upd;
+      }
+      return f;
+    });
+
+    setFiles(newFiles);
+    if (currentUser) {
+      saveUserFilesCache(currentUser.id, newFiles, currentUser.emailOrPhone);
+    }
+
+    try {
+      await saveMultipleStoredFiles(updatedList);
+    } catch (err) {
+      console.warn('Batch star IDB save notice:', err);
+    }
+
+    try {
+      await saveMultipleFilesToFirestore(updatedList, currentUser?.emailOrPhone, currentUser?.email);
+    } catch (err) {
+      console.warn('Batch star Firestore save notice:', err);
+    }
+
+    showToast(
+      starred
+        ? (lang === 'bn' ? `${updatedList.length} টি ফাইল তারকাচিহ্নিত করা হয়েছে!` : `${updatedList.length} files marked as starred!`)
+        : (lang === 'bn' ? `${updatedList.length} টি ফাইল থেকে তারকা সরানো হয়েছে!` : `${updatedList.length} files unstarred!`),
+      'success'
+    );
+  };
+
+  // Batch Set Folder / File Color Label
+  const handleBatchSetFolderLabel = async (colorId: string | undefined) => {
+    if (selectedFileIds.size === 0) return;
+    const targetIds = Array.from(selectedFileIds);
+    const now = new Date().toISOString();
+    const updatedList: StorageFile[] = [];
+
+    const newFiles = files.map(f => {
+      if (targetIds.includes(f.id)) {
+        const upd: StorageFile = {
+          ...f,
+          colorLabel: colorId,
+          updatedAt: now
+        };
+        updatedList.push(upd);
+        return upd;
+      }
+      return f;
+    });
+
+    setFiles(newFiles);
+    if (currentUser) {
+      saveUserFilesCache(currentUser.id, newFiles, currentUser.emailOrPhone);
+    }
+
+    try {
+      await saveMultipleStoredFiles(updatedList);
+    } catch (err) {
+      console.warn('Batch label IDB save notice:', err);
+    }
+
+    try {
+      await saveMultipleFilesToFirestore(updatedList, currentUser?.emailOrPhone, currentUser?.email);
+    } catch (err) {
+      console.warn('Batch label Firestore save notice:', err);
+    }
+
+    const colorStyle = getFolderColorStyle(colorId);
+    if (colorStyle) {
+      showToast(
+        lang === 'bn'
+          ? `${updatedList.length} টি ফাইলে "${colorStyle.nameBn}" কালার লেবেল যুক্ত হয়েছে!`
+          : `Applied "${colorStyle.nameEn}" color label to ${updatedList.length} items!`,
+        'success'
+      );
+    } else {
+      showToast(
+        lang === 'bn'
+          ? `${updatedList.length} টি ফাইল থেকে কালার লেবেল মুছে ফেলা হয়েছে!`
+          : `Removed color label from ${updatedList.length} items!`,
+        'info'
+      );
+    }
+  };
+
   // Update file from modal (Share / Encrypt)
   const handleUpdateFile = async (updated: StorageFile) => {
     await saveStoredFile(updated);
@@ -1789,16 +1942,34 @@ export default function App() {
 
       const readSingle = async (file: File, idx: number): Promise<StorageFile> => {
         let dataUrl = '';
-        try {
-          dataUrl = await safeReadFileAsDataUrl(file);
-        } catch (readErr) {
-          console.warn('Direct drop read warning:', readErr);
+        let finalSize = file.size;
+        let fileName = file.name;
+
+        if (file.type.startsWith('image/')) {
+          try {
+            const comp = await compressImage(file, { enabled: true, level: 'balanced' });
+            dataUrl = comp.dataUrl;
+            finalSize = comp.compressedSize;
+            if (comp.isCompressed) {
+              fileName = comp.file.name;
+            }
+          } catch (compErr) {
+            console.warn('Direct drop image compression notice:', compErr);
+            dataUrl = await safeReadFileAsDataUrl(file);
+          }
+        } else {
+          try {
+            dataUrl = await safeReadFileAsDataUrl(file);
+          } catch (readErr) {
+            console.warn('Direct drop read warning:', readErr);
+          }
         }
-        const category = detectFileCategory(file.name, file.type);
+
+        const category = detectFileCategory(fileName, file.type);
         return {
           id: 'file-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).substring(2, 8),
-          name: file.name,
-          size: file.size,
+          name: fileName,
+          size: finalSize,
           type: file.type || 'application/octet-stream',
           category,
           dataUrl,
@@ -1810,6 +1981,7 @@ export default function App() {
           ownerId: currentUser.id,
           ownerPhone: curPhone,
           ownerEmail: curEmail,
+          ownerEmailOrPhone: (curPhone || curEmail || currentUser.emailOrPhone || '').trim(),
           folderId: currentFolderId || null,
           shared: { isShared: false }
         };
@@ -2124,6 +2296,8 @@ export default function App() {
             onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
             onOpenMoveModal={() => handleOpenMoveModal()}
             onOpenCopyModal={() => handleOpenCopyModal()}
+            onBatchSetFolderLabel={handleBatchSetFolderLabel}
+            onBatchToggleStar={handleBatchToggleStar}
             clipboard={clipboard}
             onExecuteClipboard={handleExecuteClipboard}
             onCancelClipboard={handleCancelClipboard}
@@ -2426,7 +2600,8 @@ export default function App() {
         onClose={() => setIsUploadOpen(false)}
         onFilesUploaded={handleFilesUploaded}
         ownerId={currentUser.id}
-        ownerPhone={currentUser.emailOrPhone}
+        ownerPhone={currentUser.phone || (isPhoneNumber(currentUser.emailOrPhone) ? normalizePhone(currentUser.emailOrPhone) : '')}
+        ownerEmail={currentUser.email || (isEmail(currentUser.emailOrPhone) ? normalizeEmail(currentUser.emailOrPhone) : '')}
         currentFolderId={currentFolderId}
         lang={lang}
       />

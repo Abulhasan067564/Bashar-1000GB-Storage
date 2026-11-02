@@ -343,9 +343,9 @@ export async function deleteUserFromFirestore(userId: string): Promise<void> {
   }
 }
 
-// Save chunks to Firestore for larger files (> 750KB)
+// Save chunks to Firestore for larger files (> 400KB)
 export async function saveFileChunksToFirestore(fileId: string, dataUrl: string): Promise<number> {
-  const CHUNK_SIZE = 750000;
+  const CHUNK_SIZE = 350000;
   const totalChunks = Math.ceil(dataUrl.length / CHUNK_SIZE);
   try {
     for (let i = 0; i < totalChunks; i++) {
@@ -435,11 +435,11 @@ export async function saveFileToFirestore(
       filePayload.colorLabel = file.colorLabel;
     }
 
-    // Direct embed if under 750KB
-    if (file.dataUrl && file.dataUrl.length <= 750000) {
+    // Direct embed if under 400KB base64
+    if (file.dataUrl && file.dataUrl.length <= 400000) {
       filePayload.dataUrl = file.dataUrl;
       filePayload.hasChunks = false;
-    } else if (file.dataUrl && file.dataUrl.length > 750000) {
+    } else if (file.dataUrl && file.dataUrl.length > 400000) {
       // Chunked storage for larger files
       const totalChunks = await saveFileChunksToFirestore(file.id, file.dataUrl);
       if (totalChunks > 0) {
@@ -502,8 +502,12 @@ export async function saveMultipleFilesToFirestore(
         if (file.isFolder !== undefined) filePayload.isFolder = Boolean(file.isFolder);
         if (file.colorLabel !== undefined) filePayload.colorLabel = file.colorLabel;
 
-        if (file.dataUrl && file.dataUrl.length <= 750000) {
+        if (file.dataUrl && file.dataUrl.length <= 400000) {
           filePayload.dataUrl = file.dataUrl;
+          filePayload.hasChunks = false;
+        } else if (file.dataUrl && file.dataUrl.length > 400000) {
+          filePayload.hasChunks = true;
+          filePayload.totalChunks = Math.ceil(file.dataUrl.length / 350000);
         }
         batch.set(doc(db, 'files', file.id), filePayload, { merge: true });
       }
@@ -519,7 +523,7 @@ export async function saveMultipleFilesToFirestore(
 
       // Handle chunking for any files exceeding single doc limit
       for (const file of slice) {
-        if (file.dataUrl && file.dataUrl.length > 750000) {
+        if (file.dataUrl && file.dataUrl.length > 400000) {
           saveFileChunksToFirestore(file.id, file.dataUrl).catch(() => {});
         }
       }
@@ -551,62 +555,98 @@ export async function deleteFileFromFirestore(fileId: string): Promise<void> {
   }
 }
 
-// Load user files from Firestore (Dual-Key: matches by ownerId OR ownerPhone OR ownerEmail across all websites & devices)
+// Load user files from Firestore (Universal cross-device matching by ownerId, phone, and email)
 export async function loadUserFilesFromFirestore(
   userId: string, 
   userPhoneOrEmail?: string,
-  userEmail?: string
+  userEmail?: string,
+  userPhone?: string
 ): Promise<StorageFile[]> {
   const path = 'files';
   const fileMap = new Map<string, StorageFile>();
+  const deletedIdSet = new Set(getDeletedFileIds());
 
   try {
-    const queries = [];
+    const rawIdent = (userPhoneOrEmail || '').trim();
+    const cleanPhone = (userPhone ? normalizePhone(userPhone) : (isPhoneNumber(rawIdent) ? normalizePhone(rawIdent) : '')).trim();
+    const cleanEmail = (userEmail ? normalizeEmail(userEmail) : (isEmail(rawIdent) ? normalizeEmail(rawIdent) : '')).trim();
 
-    // 1. Query by ownerId
-    if (userId) {
-      queries.push(query(collection(db, path), where('ownerId', '==', userId)));
-    }
-
-    // 2. Query by ownerPhone / ownerEmailOrPhone (Guarantees cross-device findability by number)
-    if (userPhoneOrEmail) {
-      const clean = userPhoneOrEmail.trim();
-      const norm = clean.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
-
-      queries.push(query(collection(db, path), where('ownerPhone', '==', clean)));
-      queries.push(query(collection(db, path), where('ownerEmailOrPhone', '==', clean)));
-
-      if (norm && norm !== clean) {
-        queries.push(query(collection(db, path), where('ownerPhone', '==', norm)));
-        queries.push(query(collection(db, path), where('ownerPhone', '==', '0' + norm)));
-        queries.push(query(collection(db, path), where('ownerPhone', '==', '+88' + norm)));
+    // 1. Direct fetch from files collection
+    // This solves historical discrepancies where old files had random user IDs (e.g. user-1791906446760)
+    const snapshot = await getDocs(collection(db, path));
+    
+    snapshot.forEach(d => {
+      const file = d.data() as StorageFile;
+      if (!file || !file.id || deletedIdSet.has(file.id)) {
+        if (file && file.id && deletedIdSet.has(file.id)) {
+          deleteDoc(doc(db, 'files', file.id)).catch(() => {});
+        }
+        return;
       }
 
-      if (isEmail(clean)) {
-        queries.push(query(collection(db, path), where('ownerEmail', '==', normalizeEmail(clean))));
+      // Check if file belongs to this user
+      let isMatch = false;
+
+      // Direct ownerId match
+      if (userId && (file.ownerId === userId || file.ownerId === 'u_' + userId || file.ownerId === 'user_' + userId)) {
+        isMatch = true;
       }
-    }
 
-    // 3. Query by ownerEmail directly if passed
-    if (userEmail && userEmail.trim()) {
-      const cleanEm = normalizeEmail(userEmail);
-      queries.push(query(collection(db, path), where('ownerEmail', '==', cleanEm)));
-      queries.push(query(collection(db, path), where('ownerEmailOrPhone', '==', cleanEm)));
-    }
+      // Phone match (clean, normalized, or with/without +88)
+      if (!isMatch && cleanPhone) {
+        const filePhone = (file.ownerPhone || '').replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
+        const targetPhone = cleanPhone.replace(/[\s\-\(\)]/g, '').replace(/^\+88/, '');
+        if (
+          file.ownerPhone === cleanPhone ||
+          file.ownerEmailOrPhone === cleanPhone ||
+          (filePhone && targetPhone && filePhone === targetPhone) ||
+          file.ownerId === 'u_' + cleanPhone ||
+          file.ownerId === 'user_' + cleanPhone
+        ) {
+          isMatch = true;
+        }
+      }
 
-    // Execute ALL Firestore queries concurrently in parallel for maximum speed
-    const results = await Promise.allSettled(queries.map(q => getDocs(q)));
-    const deletedIdSet = new Set(getDeletedFileIds());
-    results.forEach(res => {
-      if (res.status === 'fulfilled') {
-        res.value.forEach(d => {
-          const file = d.data() as StorageFile;
-          if (file && file.id && !deletedIdSet.has(file.id)) {
-            fileMap.set(file.id, file);
-          } else if (file && file.id && deletedIdSet.has(file.id)) {
-            deleteDoc(doc(db, 'files', file.id)).catch(() => {});
-          }
-        });
+      // Email match
+      if (!isMatch && cleanEmail) {
+        const normTargetEmail = normalizeEmail(cleanEmail);
+        if (
+          file.ownerEmail === normTargetEmail ||
+          file.ownerEmailOrPhone === normTargetEmail ||
+          normalizeEmail(file.ownerEmail || '') === normTargetEmail ||
+          normalizeEmail(file.ownerEmailOrPhone || '') === normTargetEmail
+        ) {
+          isMatch = true;
+        }
+      }
+
+      // General identifier match
+      if (!isMatch && rawIdent) {
+        if (file.ownerPhone === rawIdent || file.ownerEmail === rawIdent || file.ownerEmailOrPhone === rawIdent) {
+          isMatch = true;
+        }
+      }
+
+      if (isMatch) {
+        // Reconcile and normalize file ownership to active user ID
+        const reconciled: StorageFile = {
+          ...file,
+          ownerId: userId || file.ownerId,
+          ownerPhone: cleanPhone || file.ownerPhone,
+          ownerEmail: cleanEmail || file.ownerEmail,
+          ownerEmailOrPhone: cleanPhone || cleanEmail || file.ownerEmailOrPhone || rawIdent
+        };
+        fileMap.set(file.id, reconciled);
+
+        // If file had an outdated ownerId, silently heal it in Firestore
+        if (userId && file.ownerId !== userId) {
+          setDoc(doc(db, 'files', file.id), {
+            ownerId: userId,
+            ownerPhone: cleanPhone || file.ownerPhone || '',
+            ownerEmail: cleanEmail || file.ownerEmail || '',
+            ownerEmailOrPhone: cleanPhone || cleanEmail || file.ownerEmailOrPhone || rawIdent
+          }, { merge: true }).catch(() => {});
+        }
       }
     });
 

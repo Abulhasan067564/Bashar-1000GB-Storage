@@ -14,6 +14,7 @@ import {
   BarChart,
   Bar
 } from 'recharts';
+import { CategoryStorageBarChart } from './CategoryStorageBarChart';
 import {
   BarChart3,
   TrendingUp,
@@ -92,6 +93,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
 }) => {
   const [trendView, setTrendView] = useState<'cumulative' | 'daily'>('cumulative');
   const [activeTab, setActiveTab] = useState<'trends' | 'categories'>('trends');
+  const [categoryView, setCategoryView] = useState<'barchart' | 'breakdown'>('barchart');
 
   const activeFiles = useMemo(() => files.filter(f => !f.inTrash && !f.isFolder), [files]);
 
@@ -381,6 +383,29 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
               </button>
             </div>
           )}
+
+          {activeTab === 'categories' && (
+            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs">
+              <button
+                onClick={() => setCategoryView('barchart')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                  categoryView === 'barchart' ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? 'বার চার্ট' : 'Bar Chart'}</span>
+              </button>
+              <button
+                onClick={() => setCategoryView('breakdown')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
+                  categoryView === 'breakdown' ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <PieIcon className="w-3.5 h-3.5" />
+                <span>{lang === 'bn' ? 'ডোনাট ও তালিকা' : 'Donut & List'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Main Content Area */}
@@ -538,125 +563,132 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({
           {/* TAB 2: Top-Consuming File Types */}
           {activeTab === 'categories' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                
-                {/* Recharts Pie Donut Chart */}
-                <div className="md:col-span-5 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center shadow-xl">
-                  <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-1.5 self-start">
-                    <PieIcon className="w-4 h-4 text-cyan-400" />
-                    <span>{lang === 'bn' ? 'ক্যাটাগরি ডিস্ট্রিবিউশন' : 'Storage Distribution'}</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mb-2 self-start">
-                    {lang === 'bn' ? 'কোন ধরনের ফাইল কতটুকু জায়গা নিচ্ছে' : 'Proportional breakdown by format category'}
-                  </p>
-
-                  <div className="w-full h-56 relative flex items-center justify-center">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={categoryData.filter(c => c.bytes > 0)}
-                          dataKey="bytes"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={85}
-                          paddingAngle={3}
-                        >
-                          {categoryData.filter(c => c.bytes > 0).map((entry) => (
-                            <Cell key={entry.category} fill={entry.color} stroke="#0f172a" strokeWidth={2} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#0f172a',
-                            borderColor: '#334155',
-                            borderRadius: '12px',
-                            color: '#f8fafc',
-                            fontSize: '12px'
-                          }}
-                          formatter={(val: any) => [formatBytes(Number(val)), lang === 'bn' ? 'সাইজ' : 'Size']}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-
-                    {/* Donut Inner Label */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className="text-xs text-slate-400 font-medium">
-                        {lang === 'bn' ? 'সর্বোচ্চ' : 'Top Type'}
-                      </span>
-                      <span className="text-base font-black text-white font-mono">
-                        {topCategory && topCategory.bytes > 0 ? `${topCategory.percentage}%` : '0%'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ranked Leaderboard of Top Consuming Types */}
-                <div className="md:col-span-7 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-1.5">
-                      <Database className="w-4 h-4 text-blue-400" />
-                      <span>{lang === 'bn' ? 'শীর্ষ ডাটা ব্যবহারকারী তালিকা' : 'Top Data Consumers Leaderboard'}</span>
+              {categoryView === 'barchart' ? (
+                <CategoryStorageBarChart
+                  categoryData={categoryData}
+                  totalUsedBytes={stats.usedBytes}
+                  formatBytes={formatBytes}
+                  lang={lang}
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Recharts Pie Donut Chart */}
+                  <div className="md:col-span-5 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center shadow-xl">
+                    <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-1.5 self-start">
+                      <PieIcon className="w-4 h-4 text-cyan-400" />
+                      <span>{lang === 'bn' ? 'ক্যাটাগরি ডিস্ট্রিবিউশন' : 'Storage Distribution'}</span>
                     </h3>
-                    <p className="text-[11px] text-slate-400 mb-3">
-                      {lang === 'bn' ? 'সাইজের ভিত্তিতে সাজানো ফাইল ক্যাটাগরি' : 'Ranked from highest consuming category to lowest'}
+                    <p className="text-[11px] text-slate-400 mb-2 self-start">
+                      {lang === 'bn' ? 'কোন ধরনের ফাইল কতটুকু জায়গা নিচ্ছে' : 'Proportional breakdown by format category'}
                     </p>
 
-                    <div className="space-y-2.5">
-                      {categoryData.map((item, idx) => {
-                        const IconComponent = CATEGORY_ICONS[item.category] || HelpCircle;
-                        return (
-                          <div
-                            key={item.category}
-                            className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-3 hover:border-slate-700 transition"
+                    <div className="w-full h-56 relative flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={categoryData.filter(c => c.bytes > 0)}
+                            dataKey="bytes"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={85}
+                            paddingAngle={3}
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="text-xs font-mono font-bold text-slate-500 w-4">
-                                #{idx + 1}
-                              </span>
-                              <div
-                                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                                style={{ backgroundColor: `${item.color}20`, color: item.color }}
-                              >
-                                <IconComponent className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-                                  <span>{item.name}</span>
-                                  <span className="text-[10px] text-slate-400 font-normal">
-                                    ({item.count} {lang === 'bn' ? 'টি' : 'files'})
-                                  </span>
-                                </div>
-                                {/* Mini progress bar */}
-                                <div className="w-28 sm:w-40 bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all duration-300"
-                                    style={{
-                                      width: `${Math.max(item.percentage, item.bytes > 0 ? 3 : 0)}%`,
-                                      backgroundColor: item.color
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
+                            {categoryData.filter(c => c.bytes > 0).map((entry) => (
+                              <Cell key={entry.category} fill={entry.color} stroke="#0f172a" strokeWidth={2} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#0f172a',
+                              borderColor: '#334155',
+                              borderRadius: '12px',
+                              color: '#f8fafc',
+                              fontSize: '12px'
+                            }}
+                            formatter={(val: any) => [formatBytes(Number(val)), lang === 'bn' ? 'সাইজ' : 'Size']}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
 
-                            <div className="text-right shrink-0">
-                              <div className="text-xs font-black text-white font-mono">
-                                {formatBytes(item.bytes)}
+                      {/* Donut Inner Label */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-xs text-slate-400 font-medium">
+                          {lang === 'bn' ? 'সর্বোচ্চ' : 'Top Type'}
+                        </span>
+                        <span className="text-base font-black text-white font-mono">
+                          {topCategory && topCategory.bytes > 0 ? `${topCategory.percentage}%` : '0%'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ranked Leaderboard of Top Consuming Types */}
+                  <div className="md:col-span-7 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white mb-1 flex items-center gap-1.5">
+                        <Database className="w-4 h-4 text-blue-400" />
+                        <span>{lang === 'bn' ? 'শীর্ষ ডাটা ব্যবহারকারী তালিকা' : 'Top Data Consumers Leaderboard'}</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mb-3">
+                        {lang === 'bn' ? 'সাইজের ভিত্তিতে সাজানো ফাইল ক্যাটাগরি' : 'Ranked from highest consuming category to lowest'}
+                      </p>
+
+                      <div className="space-y-2.5">
+                        {categoryData.map((item, idx) => {
+                          const IconComponent = CATEGORY_ICONS[item.category] || HelpCircle;
+                          return (
+                            <div
+                              key={item.category}
+                              className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-2.5 flex items-center justify-between gap-3 hover:border-slate-700 transition"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-xs font-mono font-bold text-slate-500 w-4">
+                                  #{idx + 1}
+                                </span>
+                                <div
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                                  style={{ backgroundColor: `${item.color}20`, color: item.color }}
+                                >
+                                  <IconComponent className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                                    <span>{item.name}</span>
+                                    <span className="text-[10px] text-slate-400 font-normal">
+                                      ({item.count} {lang === 'bn' ? 'টি' : 'files'})
+                                    </span>
+                                  </div>
+                                  {/* Mini progress bar */}
+                                  <div className="w-28 sm:w-40 bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-300"
+                                      style={{
+                                        width: `${Math.max(item.percentage, item.bytes > 0 ? 3 : 0)}%`,
+                                        backgroundColor: item.color
+                                      }}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-[10px] font-semibold" style={{ color: item.color }}>
-                                {item.percentage}%
+
+                              <div className="text-right shrink-0">
+                                <div className="text-xs font-black text-white font-mono">
+                                  {formatBytes(item.bytes)}
+                                </div>
+                                <div className="text-[10px] font-semibold" style={{ color: item.color }}>
+                                  {item.percentage}%
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-
-              </div>
+              )}
             </div>
           )}
         </div>

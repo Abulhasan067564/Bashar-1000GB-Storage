@@ -1,5 +1,5 @@
-import React from 'react';
-import { ViewMode, FileCategory, ActiveTab, StorageFile, ClipboardState, SiteSettings } from '../types/storage';
+import React, { useState, useEffect, useRef } from 'react';
+import { ViewMode, FileCategory, ActiveTab, StorageFile, ClipboardState, SiteSettings, FOLDER_COLOR_PRESETS } from '../types/storage';
 import { 
   CheckSquare, 
   Square, 
@@ -24,7 +24,13 @@ import {
   ChevronRight,
   Video,
   Mic,
-  Info
+  Info,
+  Star,
+  StarOff,
+  Palette,
+  Layers,
+  ChevronDown,
+  Ban
 } from 'lucide-react';
 
 interface ActionBarProps {
@@ -43,6 +49,8 @@ interface ActionBarProps {
   onOpenVoiceRecorder?: () => void;
   onOpenMoveModal: () => void;
   onOpenCopyModal: () => void;
+  onBatchSetFolderLabel?: (colorId: string | undefined) => void;
+  onBatchToggleStar?: (starred: boolean) => void;
   clipboard: ClipboardState | null;
   onExecuteClipboard: () => void;
   onCancelClipboard: () => void;
@@ -79,6 +87,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenVoiceRecorder,
   onOpenMoveModal,
   onOpenCopyModal,
+  onBatchSetFolderLabel,
+  onBatchToggleStar,
   clipboard,
   onExecuteClipboard,
   onCancelClipboard,
@@ -98,6 +108,34 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onToggleDetailsPanel,
   lang
 }) => {
+  const [isBulkMenuOpen, setIsBulkMenuOpen] = useState(false);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const bulkMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close bulk action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(event.target as Node)) {
+        setIsBulkMenuOpen(false);
+        setIsColorPickerOpen(false);
+      }
+    };
+    if (isBulkMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isBulkMenuOpen]);
+
+  // Bulk actions only apply when multiple files are selected (selectedCount > 1)
+  useEffect(() => {
+    if (selectedCount <= 1) {
+      setIsBulkMenuOpen(false);
+      setIsColorPickerOpen(false);
+    }
+  }, [selectedCount]);
+
   const isTrashTab = activeTab === 'trash';
   const driveTitle = siteSettings?.siteName ? `${siteSettings.siteName} Drive` : 'Bashar Drive';
   const driveTitleBn = siteSettings?.siteName ? `${siteSettings.siteName} ড্রাইভ` : 'বাশার ড্রাইভ';
@@ -284,6 +322,173 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
         {/* Batch Actions Group */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* BULK ACTION DROPDOWN MENU - Appears ONLY when multiple files are selected (selectedCount > 1) */}
+          {!isTrashTab && selectedCount > 1 && (
+            <div className="relative" ref={bulkMenuRef}>
+              <button
+                onClick={() => setIsBulkMenuOpen(prev => !prev)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 via-sky-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-black shadow-lg shadow-cyan-500/25 border border-cyan-400/40 transition cursor-pointer animate-in zoom-in-95"
+                title={lang === 'bn' ? 'নির্বাচিত একাধিক ফাইলের জন্য বাল্ক অ্যাকশন মেনু' : 'Bulk Action Menu for selected files'}
+              >
+                <Layers className="w-4 h-4 text-cyan-200" />
+                <span>{lang === 'bn' ? `বাল্ক অ্যাকশন (${selectedCount})` : `Bulk Actions (${selectedCount})`}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isBulkMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown Popover */}
+              {isBulkMenuOpen && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-72 sm:w-80 bg-slate-900/98 backdrop-blur-xl border border-cyan-500/40 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 space-y-1">
+                  <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-white">
+                      <Layers className="w-4 h-4 text-cyan-400" />
+                      <span>{lang === 'bn' ? 'বাল্ক অপারেশনসমূহ' : 'Bulk Operations'}</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px] font-black">
+                      {selectedCount} {lang === 'bn' ? 'টি আইটেম' : 'items'}
+                    </span>
+                  </div>
+
+                  {/* Set Folder / Item Color Label */}
+                  {onBatchSetFolderLabel && (
+                    <div className="p-1">
+                      <button
+                        onClick={() => setIsColorPickerOpen(prev => !prev)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Palette className="w-4 h-4 text-amber-400" />
+                          <span>{lang === 'bn' ? 'ফোল্ডার কালার লেবেল দিন' : 'Set Folder / Color Label'}</span>
+                        </div>
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isColorPickerOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {isColorPickerOpen && (
+                        <div className="mt-1 p-2.5 bg-slate-950/90 rounded-xl border border-slate-800 space-y-2 animate-in fade-in">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            {lang === 'bn' ? 'একটি কালার লেবেল বেছে নিন' : 'Choose a color label'}
+                          </div>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {FOLDER_COLOR_PRESETS.map((color) => (
+                              <button
+                                key={color.id}
+                                onClick={() => {
+                                  onBatchSetFolderLabel(color.id);
+                                  setIsBulkMenuOpen(false);
+                                  setIsColorPickerOpen(false);
+                                }}
+                                className="group flex flex-col items-center gap-1 p-1 rounded-lg hover:bg-slate-800/80 transition cursor-pointer"
+                                title={lang === 'bn' ? color.nameBn : color.nameEn}
+                              >
+                                <div
+                                  className="w-6 h-6 rounded-full border-2 border-white/20 shadow-md group-hover:scale-110 group-hover:border-white transition-all duration-150"
+                                  style={{ backgroundColor: color.hex }}
+                                />
+                                <span className="text-[9px] text-slate-400 truncate max-w-[48px] text-center">
+                                  {lang === 'bn' ? color.nameBn.split(' ')[0] : color.nameEn.split(' ')[0]}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => {
+                              onBatchSetFolderLabel(undefined);
+                              setIsBulkMenuOpen(false);
+                              setIsColorPickerOpen(false);
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[11px] transition cursor-pointer"
+                          >
+                            <Ban className="w-3 h-3" />
+                            <span>{lang === 'bn' ? 'কালার লেবেল মুছুন (None)' : 'Clear Color Label'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Mark as Starred */}
+                  {onBatchToggleStar && (
+                    <button
+                      onClick={() => {
+                        onBatchToggleStar(true);
+                        setIsBulkMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-amber-300 hover:bg-amber-950/30 transition cursor-pointer"
+                    >
+                      <Star className="w-4 h-4 text-amber-400 fill-amber-400/30" />
+                      <span>{lang === 'bn' ? 'সবগুলোকে তারকাচিহ্নিত করুন' : 'Mark as Starred'}</span>
+                    </button>
+                  )}
+
+                  {/* Remove Star */}
+                  {onBatchToggleStar && (
+                    <button
+                      onClick={() => {
+                        onBatchToggleStar(false);
+                        setIsBulkMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-slate-100 hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <StarOff className="w-4 h-4 text-slate-400" />
+                      <span>{lang === 'bn' ? 'তারকাচিহ্ন মুছে ফেলুন' : 'Remove Star'}</span>
+                    </button>
+                  )}
+
+                  <div className="h-px bg-slate-800 my-1" />
+
+                  {/* Move Selected */}
+                  <button
+                    onClick={() => {
+                      onOpenMoveModal();
+                      setIsBulkMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-indigo-300 hover:bg-indigo-950/30 transition cursor-pointer"
+                  >
+                    <Move className="w-4 h-4 text-indigo-400" />
+                    <span>{lang === 'bn' ? 'ফোল্ডারে মুভ করুন (Move)' : 'Move Selected'}</span>
+                  </button>
+
+                  {/* Copy Selected */}
+                  <button
+                    onClick={() => {
+                      onOpenCopyModal();
+                      setIsBulkMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-cyan-300 hover:bg-cyan-950/30 transition cursor-pointer"
+                  >
+                    <Copy className="w-4 h-4 text-cyan-400" />
+                    <span>{lang === 'bn' ? 'কপি করুন (Copy)' : 'Copy Selected'}</span>
+                  </button>
+
+                  {/* Download as ZIP */}
+                  <button
+                    onClick={() => {
+                      onBatchDownloadZip();
+                      setIsBulkMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-cyan-300 hover:bg-cyan-950/30 transition cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-cyan-400" />
+                    <span>{lang === 'bn' ? 'জিপ আকারে ডাউনলোড (ZIP)' : 'Download as ZIP'}</span>
+                  </button>
+
+                  <div className="h-px bg-slate-800 my-1" />
+
+                  {/* Delete / Move to Bin */}
+                  <button
+                    onClick={() => {
+                      onBatchDelete();
+                      setIsBulkMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-300 hover:text-red-200 hover:bg-red-950/40 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                    <span>{lang === 'bn' ? 'রিসাইকেল বিনে পাঠান (Delete)' : 'Move to Recycle Bin'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* MOVE (মুভ) BUTTON */}
           {!isTrashTab && selectedCount > 0 && (
             <button

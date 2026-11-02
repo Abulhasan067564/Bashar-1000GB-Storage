@@ -3,7 +3,8 @@ import { StorageFile, FileCategory } from '../../types/storage';
 import { detectFileCategory } from '../../services/indexedDbStorage';
 import { encryptFileContent } from '../../services/cryptoService';
 import { safeReadFileAsDataUrl } from '../../utils/fileReaderHelper';
-import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield, Zap } from 'lucide-react';
+import { compressImage, formatCompressionBytes, CompressionOptions } from '../../utils/fileCompressor';
+import { Upload, FileUp, X, Lock, CheckCircle2, AlertCircle, Shield, Zap, Minimize2, Gauge, Sparkles } from 'lucide-react';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface UploadModalProps {
   onFilesUploaded: (newFiles: StorageFile[]) => Promise<void> | void;
   ownerId: string;
   ownerPhone?: string;
+  ownerEmail?: string;
   currentFolderId?: string | null;
   lang: 'bn' | 'en';
 }
@@ -21,16 +23,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   onFilesUploaded,
   ownerId,
   ownerPhone,
+  ownerEmail,
   currentFolderId,
   lang
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [compressEnabled, setCompressEnabled] = useState(true);
+  const [compressionLevel, setCompressionLevel] = useState<'balanced' | 'maximum' | 'original'>('balanced');
   const [encryptEnabled, setEncryptEnabled] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [encryptionHint, setEncryptionHint] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
+  const [compressionSavings, setCompressionSavings] = useState<{ savedBytes: number; originalBytes: number } | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,19 +100,44 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
     try {
       let completedCount = 0;
-      const processSingleFile = async (file: File, index: number): Promise<StorageFile> => {
-        let dataUrl = await safeReadFileAsDataUrl(file);
+      let totalOriginal = 0;
+      let totalCompressed = 0;
 
+      const processSingleFile = async (file: File, index: number): Promise<StorageFile> => {
+        totalOriginal += file.size;
+        let dataUrl = '';
+        let finalSize = file.size;
+        let fileName = file.name;
+
+        // 1. Smart Compression (Images and large media)
+        if (compressEnabled && compressionLevel !== 'original' && file.type.startsWith('image/')) {
+          try {
+            const comp = await compressImage(file, { enabled: true, level: compressionLevel });
+            dataUrl = comp.dataUrl;
+            finalSize = comp.compressedSize;
+            if (comp.isCompressed) {
+              fileName = comp.file.name;
+            }
+          } catch (compErr) {
+            console.warn('Compression notice:', compErr);
+            dataUrl = await safeReadFileAsDataUrl(file);
+          }
+        } else {
+          dataUrl = await safeReadFileAsDataUrl(file);
+        }
+
+        totalCompressed += finalSize;
+
+        // 2. Client-side Encryption if enabled
         if (encryptEnabled) {
-          // Encrypt client-side
           dataUrl = await encryptFileContent(dataUrl, passphrase);
         }
 
-        const category: FileCategory = detectFileCategory(file.name, file.type);
+        const category: FileCategory = detectFileCategory(fileName, file.type);
         const storageFile: StorageFile = {
           id: 'file-' + Date.now() + '-' + index + '-' + Math.random().toString(36).substring(2, 8),
-          name: file.name,
-          size: file.size,
+          name: fileName,
+          size: finalSize,
           type: file.type || 'application/octet-stream',
           category,
           dataUrl,
@@ -118,6 +149,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           inTrash: false,
           ownerId,
           ownerPhone: ownerPhone ? ownerPhone.trim() : undefined,
+          ownerEmail: ownerEmail ? ownerEmail.trim() : undefined,
+          ownerEmailOrPhone: (ownerPhone || ownerEmail || '').trim(),
           folderId: currentFolderId || null,
           shared: { isShared: false }
         };
@@ -139,6 +172,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         uploadedResults.push(...batchResults);
         // Micro-yield so the browser updates animations, progress bar, and never freezes
         await new Promise(resolve => setTimeout(resolve, 16));
+      }
+
+      if (totalCompressed < totalOriginal) {
+        setCompressionSavings({
+          originalBytes: totalOriginal,
+          savedBytes: totalOriginal - totalCompressed
+        });
       }
 
       setUploadProgress(98);
@@ -233,23 +273,119 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   {lang === 'bn' ? 'সব মুছুন' : 'Clear all'}
                 </button>
               </div>
-              {selectedFiles.map((file, idx) => (
-                <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-slate-900">
-                  <span className="truncate max-w-[320px] text-slate-200">{file.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); removeSelectedFile(idx); }}
-                      className="text-slate-500 hover:text-red-400"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+              {selectedFiles.map((file, idx) => {
+                const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|bmp|gif)$/i.test(file.name);
+                return (
+                  <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-slate-900">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate max-w-[240px] text-slate-200">{file.name}</span>
+                      {isImage && compressEnabled && compressionLevel !== 'original' && (
+                        <span className="shrink-0 text-[10px] font-semibold bg-cyan-950 text-cyan-400 border border-cyan-500/30 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                          <Zap className="w-2.5 h-2.5 text-cyan-400" />
+                          {lang === 'bn' ? 'কম্প্রেশন' : 'Compressed'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeSelectedFile(idx); }}
+                        className="text-slate-500 hover:text-red-400"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          {/* Smart Compression Card (1000GB Quota Saver) */}
+          <div className="bg-slate-950/60 border border-cyan-900/40 rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shrink-0">
+                  <Minimize2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-100">
+                      {lang === 'bn' ? 'স্মার্ট ফাইল কম্প্রেশন (১০০০ জিবি ক্লাউড সেভার)' : 'Smart Compression (1000GB Quota Saver)'}
+                    </span>
+                    <span className="text-[9px] bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 font-black px-1.5 py-0.2 rounded">
+                      PRO
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {lang === 'bn' 
+                      ? 'আপলোডের পূর্বে ছবির সাইজ ৬০-৯০% সংকুচিত করে ১০০০ জিবি স্টোরেজ বহু বছর সাশ্রয় করুন' 
+                      : 'Compress images 60-90% before uploading to save storage space'}
+                  </p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={compressEnabled}
+                onChange={e => setCompressEnabled(e.target.checked)}
+                className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+              />
+            </div>
+
+            {compressEnabled && (
+              <div className="pt-1.5 border-t border-slate-800/80 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCompressionLevel('balanced')}
+                  className={`text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                    compressionLevel === 'balanced'
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                      : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>{lang === 'bn' ? 'ব্যালান্সড (সুপার কোয়ালিটি + ৬০-৮০% সেভ)' : 'Balanced (High Quality + 60-80% Save)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCompressionLevel('maximum')}
+                  className={`text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                    compressionLevel === 'maximum'
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                      : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <Gauge className="w-3 h-3" />
+                  <span>{lang === 'bn' ? 'সর্বোচ্চ সেভ (৮৫-৯৫% হ্রাস)' : 'Max Save (85-95% Reduction)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCompressionLevel('original')}
+                  className={`text-[11px] px-2.5 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                    compressionLevel === 'original'
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                      : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <span>{lang === 'bn' ? 'অরিজিনাল (নো কম্প্রেশন)' : 'Original (No Compression)'}</span>
+                </button>
+              </div>
+            )}
+
+            {compressionSavings && (
+              <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-lg p-2 text-[11px] text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>
+                  {lang === 'bn'
+                    ? `সফলভাবে ${formatCompressionBytes(compressionSavings.savedBytes)} স্টোরেজ কোটা সাশ্রয় হয়েছে!`
+                    : `Saved ${formatCompressionBytes(compressionSavings.savedBytes)} of storage quota!`}
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Client-side Encryption Checkbox */}
           <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
