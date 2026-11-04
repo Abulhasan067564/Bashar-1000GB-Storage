@@ -30,7 +30,8 @@ import {
   Palette,
   Layers,
   ChevronDown,
-  Ban
+  Ban,
+  Edit3
 } from 'lucide-react';
 
 interface ActionBarProps {
@@ -49,6 +50,9 @@ interface ActionBarProps {
   onOpenVoiceRecorder?: () => void;
   onOpenMoveModal: () => void;
   onOpenCopyModal: () => void;
+  onRenameSelected?: () => void;
+  onBatchRenameSelected?: () => void;
+  onDropIntoFolder?: (draggedFileIds: string | string[], targetFolderId: string | null) => void;
   onBatchSetFolderLabel?: (colorId: string | undefined) => void;
   onBatchToggleStar?: (starred: boolean) => void;
   clipboard: ClipboardState | null;
@@ -87,6 +91,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenVoiceRecorder,
   onOpenMoveModal,
   onOpenCopyModal,
+  onRenameSelected,
+  onBatchRenameSelected,
+  onDropIntoFolder,
   onBatchSetFolderLabel,
   onBatchToggleStar,
   clipboard,
@@ -110,31 +117,73 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 }) => {
   const [isBulkMenuOpen, setIsBulkMenuOpen] = useState(false);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const [isBatchColorPickerOpen, setIsBatchColorPickerOpen] = useState(false);
+  const [isDragOverRoot, setIsDragOverRoot] = useState(false);
+  const [isDragOverBack, setIsDragOverBack] = useState(false);
   const bulkMenuRef = useRef<HTMLDivElement>(null);
+  const batchColorPickerRef = useRef<HTMLDivElement>(null);
 
-  // Close bulk action menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (batchColorPickerRef.current && !batchColorPickerRef.current.contains(event.target as Node)) {
+        setIsBatchColorPickerOpen(false);
+      }
       if (bulkMenuRef.current && !bulkMenuRef.current.contains(event.target as Node)) {
         setIsBulkMenuOpen(false);
         setIsColorPickerOpen(false);
       }
     };
-    if (isBulkMenuOpen) {
+    if (isBatchColorPickerOpen || isBulkMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isBulkMenuOpen]);
+  }, [isBatchColorPickerOpen, isBulkMenuOpen]);
 
-  // Bulk actions only apply when multiple files are selected (selectedCount > 1)
+  // Reset menus on selection change
   useEffect(() => {
+    if (selectedCount === 0) {
+      setIsBatchColorPickerOpen(false);
+    }
     if (selectedCount <= 1) {
       setIsBulkMenuOpen(false);
       setIsColorPickerOpen(false);
     }
   }, [selectedCount]);
+
+  // Handle dropping files onto breadcrumbs (e.g. Back button or Root Drive)
+  const handleDropOnTarget = (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault();
+    setIsDragOverRoot(false);
+    setIsDragOverBack(false);
+    if (!onDropIntoFolder) return;
+
+    let idsToMove: string[] = [];
+    try {
+      const jsonStr = e.dataTransfer.getData('application/json');
+      if (jsonStr) {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed?.fileIds && Array.isArray(parsed.fileIds)) {
+          idsToMove = parsed.fileIds;
+        }
+      }
+    } catch {
+      // fallback to plain text
+    }
+
+    if (idsToMove.length === 0) {
+      const raw = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text');
+      if (raw) {
+        idsToMove = raw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    if (idsToMove.length > 0) {
+      onDropIntoFolder(idsToMove, targetFolderId);
+    }
+  };
 
   const isTrashTab = activeTab === 'trash';
   const driveTitle = siteSettings?.siteName ? `${siteSettings.siteName} Drive` : 'Bashar Drive';
@@ -204,30 +253,54 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         </div>
       )}
 
-      {/* Breadcrumb / Location Bar */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 text-xs">
+      {/* Breadcrumb / Location Bar with Drag and Drop targets */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 text-xs min-w-0 overflow-x-auto no-scrollbar py-0.5">
           {currentFolder ? (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
               <button
                 onClick={onNavigateUpFolder}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 transition font-semibold"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setIsDragOverBack(true);
+                }}
+                onDragLeave={() => setIsDragOverBack(false)}
+                onDrop={(e) => handleDropOnTarget(e, currentFolder.folderId || null)}
+                title={lang === 'bn' ? 'আগের ফোল্ডারে ফিরে যান (এখানে ড্রপ করে ফাইল স্থানান্তর করতে পারেন)' : 'Go up (Drop files here to move)'}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition font-semibold cursor-pointer border shrink-0 ${
+                  isDragOverBack
+                    ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/50 scale-105 shadow-md'
+                    : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border-slate-700'
+                }`}
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>{lang === 'bn' ? 'ফিরে যান' : 'Back'}</span>
+                <span>{lang === 'bn' ? (isDragOverBack ? 'এখানে ফেলুন' : 'ফিরে যান') : (isDragOverBack ? 'Drop Here' : 'Back')}</span>
               </button>
               <span className="text-slate-600">|</span>
               <button
                 onClick={onNavigateUpFolder}
-                className="text-slate-400 hover:text-white flex items-center gap-1"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setIsDragOverRoot(true);
+                }}
+                onDragLeave={() => setIsDragOverRoot(false)}
+                onDrop={(e) => handleDropOnTarget(e, null)}
+                title={lang === 'bn' ? 'মূল ড্রাইভে ফিরে যান (এখানে ড্রপ করে ফাইল মূল ড্রাইভে মুভ করুন)' : 'Root Drive (Drop files here to move to root)'}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition font-medium cursor-pointer border shrink-0 ${
+                  isDragOverRoot
+                    ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/50 scale-105 shadow-md'
+                    : 'text-slate-400 hover:text-white border-transparent'
+                }`}
               >
                 <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-                <span>{lang === 'bn' ? driveTitleBn : driveTitle}</span>
+                <span>{lang === 'bn' ? (isDragOverRoot ? 'মূল ড্রাইভে ফেলুন' : driveTitleBn) : (isDragOverRoot ? 'Drop in Root' : driveTitle)}</span>
               </button>
-              <ChevronRight className="w-3 h-3 text-slate-600" />
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
-                <Folder className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                <span>{currentFolder.name}</span>
+              <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold truncate">
+                <Folder className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20 shrink-0" />
+                <span className="truncate max-w-[140px] sm:max-w-[200px]">{currentFolder.name}</span>
               </div>
             </div>
           ) : (
@@ -240,10 +313,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
         {/* Primary Creation Action Buttons */}
         {!isTrashTab && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap">
             <button
               onClick={onOpenCreateFile}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 hover:text-cyan-200 border border-cyan-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 hover:text-cyan-200 border border-cyan-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
               title={lang === 'bn' ? 'নতুন টেক্সট বা ডকুমেন্ট ফাইল তৈরি করুন' : 'Create new document or text file'}
             >
               <FilePlus className="w-3.5 h-3.5 text-cyan-400" />
@@ -252,7 +325,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
             <button
               onClick={onOpenCreateFolder}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
               title={lang === 'bn' ? 'নতুন ফোল্ডার তৈরি করুন' : 'Create new folder'}
             >
               <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
@@ -283,7 +356,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
             <button
               onClick={onOpenUpload}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold shadow-md shadow-cyan-500/20 transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold shadow-md shadow-cyan-500/20 transition cursor-pointer ml-auto sm:ml-0"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>{lang === 'bn' ? 'আপলোড' : 'Upload'}</span>
@@ -316,6 +389,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           {selectedCount > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 text-[11px] font-bold">
               {selectedCount} {lang === 'bn' ? 'টি নির্বাচিত' : 'selected'}
+            </span>
+          )}
+
+          {selectedCount > 1 && (
+            <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] text-cyan-300/90 font-medium bg-cyan-950/40 px-2.5 py-0.5 rounded-full border border-cyan-800/50">
+              <Move className="w-3 h-3 text-cyan-400 animate-pulse" />
+              <span>{lang === 'bn' ? 'যেকোনো নির্বাচিত ফাইল টেনে ফোল্ডারে মুভ করুন' : 'Drag any item to move all together'}</span>
             </span>
           )}
         </div>
@@ -435,6 +515,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
                   <div className="h-px bg-slate-800 my-1" />
 
+                  {/* Batch Rename */}
+                  {onBatchRenameSelected && (
+                    <button
+                      onClick={() => {
+                        onBatchRenameSelected();
+                        setIsBulkMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-cyan-300 hover:bg-cyan-950/30 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-4 h-4 text-cyan-400" />
+                      <span>{lang === 'bn' ? 'বাল্ক/ব্যাচ রিনেম (Batch Rename)' : 'Batch Rename'}</span>
+                    </button>
+                  )}
+
                   {/* Move Selected */}
                   <button
                     onClick={() => {
@@ -484,6 +578,104 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                     <Trash2 className="w-4 h-4 text-red-400" />
                     <span>{lang === 'bn' ? 'রিসাইকেল বিনে পাঠান (Delete)' : 'Move to Recycle Bin'}</span>
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* RENAME (নাম পরিবর্তন) BUTTON FOR SINGLE SELECTION */}
+          {!isTrashTab && selectedCount === 1 && onRenameSelected && (
+            <button
+              onClick={onRenameSelected}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white text-xs font-bold border border-cyan-500/40 transition cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'নির্বাচিত ফাইলের নাম পরিবর্তন করুন' : 'Rename selected item'}
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{lang === 'bn' ? 'নাম পরিবর্তন' : 'Rename'}</span>
+            </button>
+          )}
+
+          {/* BATCH RENAME (ব্যাচ রিনেম) BUTTON FOR MULTIPLE SELECTION */}
+          {!isTrashTab && selectedCount > 1 && onBatchRenameSelected && (
+            <button
+              onClick={onBatchRenameSelected}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 hover:text-white text-xs font-bold border border-cyan-500/40 transition cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'নির্বাচিত একাধিক ফাইলের নাম একসাথে ব্যাচ রিনেম করুন' : 'Batch rename multiple selected files'}
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{lang === 'bn' ? `ব্যাচ রিনেম (${selectedCount})` : `Batch Rename (${selectedCount})`}</span>
+            </button>
+          )}
+
+          {/* STANDALONE BATCH COLOR LABEL (কালার লেবেল) TOOL FOR ANY SELECTION */}
+          {!isTrashTab && selectedCount > 0 && onBatchSetFolderLabel && (
+            <div className="relative" ref={batchColorPickerRef}>
+              <button
+                onClick={() => setIsBatchColorPickerOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-950/90 to-orange-950/90 hover:from-amber-900 hover:to-orange-900 text-amber-300 hover:text-amber-100 text-xs font-bold border border-amber-500/50 transition cursor-pointer shadow-sm active:scale-95 animate-in zoom-in-95"
+                title={lang === 'bn' ? `নির্বাচিত ${selectedCount} টি আইটেমে কালার লেবেল দিন` : `Set color label for ${selectedCount} selected items`}
+              >
+                <Palette className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{lang === 'bn' ? `কালার লেবেল (${selectedCount})` : `Color Label (${selectedCount})`}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-amber-400 transition-transform duration-200 ${isBatchColorPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Batch Color Palette Popover */}
+              {isBatchColorPickerOpen && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-72 sm:w-80 bg-slate-900/98 backdrop-blur-xl border border-amber-500/50 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 space-y-2.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                        <Palette className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">
+                          {lang === 'bn' ? 'কালার লেবেল বেছে নিন' : 'Choose Color Label'}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {lang === 'bn' ? 'নির্বাচিত ফাইল ও ফোল্ডারে যুক্ত হবে' : 'Applies to selected files & folders'}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-black">
+                      {selectedCount} {lang === 'bn' ? 'টি নির্বাচিত' : 'selected'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2">
+                    {FOLDER_COLOR_PRESETS.map((color) => (
+                      <button
+                        key={color.id}
+                        onClick={() => {
+                          onBatchSetFolderLabel(color.id);
+                          setIsBatchColorPickerOpen(false);
+                        }}
+                        className="group flex flex-col items-center gap-1.5 p-1.5 rounded-xl hover:bg-slate-800/90 transition cursor-pointer active:scale-95 border border-transparent hover:border-slate-700"
+                        title={lang === 'bn' ? color.nameBn : color.nameEn}
+                      >
+                        <div
+                          className="w-7 h-7 rounded-full border-2 border-white/20 shadow-md group-hover:scale-115 group-hover:border-white transition-all duration-150 relative"
+                          style={{ backgroundColor: color.hex }}
+                        />
+                        <span className="text-[10px] text-slate-300 truncate max-w-[50px] text-center font-medium group-hover:text-white">
+                          {lang === 'bn' ? color.nameBn.split(' ')[0] : color.nameEn.split(' ')[0]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800">
+                    <button
+                      onClick={() => {
+                        onBatchSetFolderLabel(undefined);
+                        setIsBatchColorPickerOpen(false);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
+                    >
+                      <Ban className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{lang === 'bn' ? 'কালার লেবেল মুছুন (স্বাভাবিক কালার)' : 'Reset / Remove Color'}</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -633,13 +825,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       </div>
 
       {/* Category Pills & Sort */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1 border-t border-slate-800/60">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-1 -mx-1 px-1 touch-pan-x flex-nowrap shrink-0 max-w-full">
           {categories.map((cat) => (
             <button
               key={cat.key}
               onClick={() => onCategoryChange(cat.key)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition ${selectedCategory === cat.key ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm' : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition cursor-pointer shrink-0 ${
+                selectedCategory === cat.key
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20'
+                  : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
             >
               {lang === 'bn' ? cat.labelBn : cat.labelEn}
             </button>
@@ -647,13 +843,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         </div>
 
         {/* Sort Dropdown */}
-        <div className="flex items-center gap-2 text-xs text-slate-400 ml-auto">
+        <div className="flex items-center gap-2 text-xs text-slate-400 ml-auto shrink-0">
           <ArrowUpDown className="w-3.5 h-3.5 text-cyan-400" />
           <span>{lang === 'bn' ? 'সর্ট:' : 'Sort:'}</span>
           <select
             value={sortBy}
             onChange={e => onSortByChange(e.target.value as 'date' | 'name' | 'size')}
-            className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-cyan-400"
+            className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-cyan-400 cursor-pointer"
           >
             <option value="date">{lang === 'bn' ? 'তারিখ (সর্বশেষ)' : 'Date (Newest)'}</option>
             <option value="name">{lang === 'bn' ? 'নাম (A-Z)' : 'Name (A-Z)'}</option>

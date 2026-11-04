@@ -48,7 +48,8 @@ import {
   savePaymentRequestToFirestore,
   loadPaymentRequestsFromFirestore,
   updatePaymentRequestStatusInFirestore,
-  deletePaymentRequestFromFirestore
+  deletePaymentRequestFromFirestore,
+  getSharedFileFromFirestore
 } from './services/firebase';
 import { 
   isSameEmailOrPhone, 
@@ -75,6 +76,7 @@ import { AuthModal } from './components/Modals/AuthModal';
 import { ProfileModal } from './components/Modals/ProfileModal';
 import { ShareModal } from './components/Modals/ShareModal';
 import { PreviewModal } from './components/Modals/PreviewModal';
+import { ExternalSharedViewModal } from './components/Modals/ExternalSharedViewModal';
 import { UploadModal } from './components/Modals/UploadModal';
 import { CreateFileModal } from './components/Modals/CreateFileModal';
 import { CreateFolderModal } from './components/Modals/CreateFolderModal';
@@ -84,6 +86,9 @@ import { CalculatorModal } from './components/Modals/CalculatorModal';
 import { ScreenRecorderModal } from './components/Modals/ScreenRecorderModal';
 import { VoiceRecorderModal } from './components/Modals/VoiceRecorderModal';
 import { SubscriptionModal } from './components/Modals/SubscriptionModal';
+import { RenameModal } from './components/Modals/RenameModal';
+import { BatchRenameModal } from './components/Modals/BatchRenameModal';
+import { QRScannerModal } from './components/Modals/QRScannerModal';
 import { GeminiChatbot } from './components/GeminiChatbot';
 import { FileDetailsPanel } from './components/FileDetailsPanel';
 import { FolderContextMenu } from './components/FolderContextMenu';
@@ -266,11 +271,15 @@ export default function App() {
   const [targetFileIdsForModal, setTargetFileIdsForModal] = useState<string[]>([]);
   const [previewFile, setPreviewFile] = useState<StorageFile | null>(null);
   const [shareFile, setShareFile] = useState<StorageFile | null>(null);
+  const [externalSharedFile, setExternalSharedFile] = useState<StorageFile | null>(null);
+  const [renamingFile, setRenamingFile] = useState<StorageFile | null>(null);
+  const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isScreenRecorderOpen, setIsScreenRecorderOpen] = useState(false);
   const [isVoiceRecorderOpen, setIsVoiceRecorderOpen] = useState(false);
+  const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFileDetailsOpen, setIsFileDetailsOpen] = useState(false);
@@ -343,6 +352,34 @@ export default function App() {
     return subscribeQuotaExceeded((exceeded) => {
       setQuotaExceededState(exceeded);
     });
+  }, []);
+
+  // Detect external sharable link from URL (?share=<id> or /share/<id>) on boot for temporary read-only access
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const shareQuery = urlParams.get('share') || urlParams.get('file');
+      const pathMatch = window.location.pathname.match(/^\/share\/([a-zA-Z0-9_\-]+)/);
+      const targetIdentifier = shareQuery || (pathMatch ? pathMatch[1] : null);
+
+      if (targetIdentifier) {
+        getSharedFileFromFirestore(targetIdentifier).then(file => {
+          if (file) {
+            setExternalSharedFile(file);
+          } else {
+            showToast(
+              lang === 'bn' 
+                ? 'শেয়ারকৃত ফাইলটি ক্লাউডে পাওয়া যায়নি বা মেয়াদ শেষ হয়ে গেছে।' 
+                : 'Shared file not found in cloud.',
+              'error'
+            );
+          }
+        }).catch(err => {
+          console.warn('Notice loading shared file on boot:', err);
+        });
+      }
+    } catch {}
   }, []);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -1180,12 +1217,37 @@ export default function App() {
         return false;
       }
 
-      // Search query
+      // Real-time search query matching by file name, category, and extensions
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesName = file.name.toLowerCase().includes(q);
         const matchesCategory = file.category.toLowerCase().includes(q);
-        if (!matchesName && !matchesCategory) return false;
+
+        const categoryKeywords: Record<string, string[]> = {
+          image: ['image', 'img', 'photo', 'picture', 'pic', 'ছবি', 'ইমেজ', 'ফটোগ্রাফি', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'],
+          video: ['video', 'vid', 'movie', 'film', 'ভিডিও', 'মুভি', 'নাটক', 'ওয়াজ', 'mp4', 'mkv', 'webm', 'mov'],
+          audio: ['audio', 'music', 'sound', 'song', 'mp3', 'wav', 'অডিও', 'গান', 'সুর', 'গজল', 'রেকর্ড'],
+          document: ['document', 'doc', 'text', 'txt', 'pdf', 'word', 'sheet', 'ডকুমেন্ট', 'নথি', 'লেখা', 'বই', 'docx', 'xlsx'],
+          archive: ['archive', 'zip', 'rar', 'tar', '7z', 'gz', 'সংকুচিত', 'আর্কাইভ', 'জিপ'],
+          code: ['code', 'script', 'programming', 'dev', 'কোড', 'সোর্স', 'html', 'js', 'ts', 'tsx', 'jsx', 'py', 'css', 'json']
+        };
+
+        let matchesCatKeywords = false;
+        for (const [cat, keywords] of Object.entries(categoryKeywords)) {
+          if (file.category === cat && keywords.some(kw => kw.includes(q) || q.includes(kw))) {
+            matchesCatKeywords = true;
+            break;
+          }
+        }
+
+        const ext = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() : '';
+        const matchesExt = ext ? (ext.includes(q.replace(/^\./, '')) || q.includes(ext)) : false;
+        const matchesFolder = Boolean(file.isFolder && (q.includes('folder') || q.includes('ফোল্ডার')));
+        const matchesTags = Boolean(file.tags && file.tags.some(t => t.toLowerCase().includes(q)));
+
+        if (!matchesName && !matchesCategory && !matchesCatKeywords && !matchesExt && !matchesFolder && !matchesTags) {
+          return false;
+        }
       }
 
       return true;
@@ -1262,6 +1324,42 @@ export default function App() {
     saveFileToFirestore(enriched, currentUser?.emailOrPhone, curEmail).catch(() => {});
     setFiles(prev => [enriched, ...prev]);
     showToast(lang === 'bn' ? `"${enriched.name}" ফাইল তৈরি হয়েছে!` : `File "${enriched.name}" created!`);
+  };
+
+  // Connect or Pair account from QR code
+  const handleConnectAccountFromQR = async (userData: Partial<UserAccount>) => {
+    if (!userData || !userData.id) return;
+    const targetIdent = (userData.emailOrPhone || userData.phone || userData.email || userData.id).trim();
+
+    let matchedUser = usersList.find(u => u.id === userData.id || (targetIdent && matchesUserAccount(u, targetIdent)));
+
+    if (!matchedUser) {
+      matchedUser = {
+        id: userData.id,
+        name: userData.name || 'User',
+        emailOrPhone: targetIdent,
+        phone: userData.phone || (isPhoneNumber(targetIdent) ? normalizePhone(targetIdent) : ''),
+        email: userData.email || (isEmail(targetIdent) ? normalizeEmail(targetIdent) : ''),
+        secretName: userData.secretName || 'Bashar',
+        passwordHash: userData.passwordHash || '',
+        totalStorageBytes: userData.totalStorageBytes || 1000 * 1024 * 1024 * 1024,
+        createdAt: new Date().toISOString(),
+        role: userData.role || 'user',
+        status: 'active'
+      };
+      const updatedUsers = [...usersList, matchedUser];
+      setUsersList(updatedUsers);
+      localStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(updatedUsers));
+      saveUserToFirestore(matchedUser).catch(() => {});
+    }
+
+    setCurrentUser(matchedUser);
+    localStorage.setItem(STORAGE_SESSION_KEY, matchedUser.id);
+
+    // Cross-device sync for connected user
+    const curP = (matchedUser.phone || (isPhoneNumber(matchedUser.emailOrPhone) ? normalizePhone(matchedUser.emailOrPhone) : '')).trim();
+    const curE = (matchedUser.email || (isEmail(matchedUser.emailOrPhone) ? normalizeEmail(matchedUser.emailOrPhone) : '')).trim();
+    syncUserFiles(matchedUser.id, true, curP, curE, matchedUser.emailOrPhone).catch(() => {});
   };
 
   // Safe Preview File Guard
@@ -1375,6 +1473,111 @@ export default function App() {
         'info'
       );
     }
+  };
+
+  // Open Rename Modal
+  const handleOpenRenameModal = (file: StorageFile) => {
+    setRenamingFile(file);
+  };
+
+  // Execute File / Folder Rename
+  const handleExecuteRename = async (fileId: string, newName: string) => {
+    const targetFile = files.find(f => f.id === fileId);
+    if (!targetFile) return;
+
+    const oldName = targetFile.name;
+    const now = new Date().toISOString();
+    const updatedFile: StorageFile = {
+      ...targetFile,
+      name: newName,
+      updatedAt: now
+    };
+
+    // 1. Optimistic update
+    setFiles(prev => {
+      const updated = prev.map(f => f.id === fileId ? updatedFile : f);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
+
+    // 2. Persist to IndexedDB
+    try {
+      await saveStoredFile(updatedFile);
+    } catch (err) {
+      console.warn('IDB rename notice:', err);
+    }
+
+    // 3. Persist to Firestore
+    try {
+      await saveFileToFirestore(updatedFile, currentUser?.emailOrPhone, currentUser?.email);
+    } catch (err) {
+      console.warn('Firestore rename notice:', err);
+    }
+
+    showToast(
+      lang === 'bn' 
+        ? `"${oldName}" এর নাম পরিবর্তন করে "${newName}" রাখা হয়েছে!` 
+        : `Renamed "${oldName}" to "${newName}"!`,
+      'success'
+    );
+  };
+
+  // Execute Batch Rename for multiple selected files
+  const handleExecuteBatchRename = async (renamedList: { id: string; newName: string }[]) => {
+    if (renamedList.length === 0) return;
+
+    const renameMap = new Map<string, string>();
+    renamedList.forEach(item => renameMap.set(item.id, item.newName));
+
+    const now = new Date().toISOString();
+    const updatedFiles: StorageFile[] = [];
+
+    // 1. Optimistic state update
+    setFiles(prev => {
+      const updated = prev.map(f => {
+        if (renameMap.has(f.id)) {
+          const newName = renameMap.get(f.id)!;
+          const upd: StorageFile = {
+            ...f,
+            name: newName,
+            updatedAt: now
+          };
+          updatedFiles.push(upd);
+          return upd;
+        }
+        return f;
+      });
+
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, updated, currentUser.emailOrPhone);
+      }
+      return updated;
+    });
+
+    // 2. Persist to IndexedDB
+    try {
+      await saveMultipleStoredFiles(updatedFiles);
+    } catch (err) {
+      console.warn('IDB batch rename notice:', err);
+    }
+
+    // 3. Persist to Firestore
+    try {
+      if (currentUser?.emailOrPhone) {
+        await saveMultipleFilesToFirestore(updatedFiles, currentUser.emailOrPhone, currentUser.email);
+      }
+    } catch (err) {
+      console.warn('Firestore batch rename notice:', err);
+    }
+
+    showToast(
+      lang === 'bn'
+        ? `সফলভাবে ${renamedList.length} টি ফাইলের নাম পরিবর্তন করা হয়েছে!`
+        : `Successfully renamed ${renamedList.length} files!`,
+      'success'
+    );
   };
 
   const handleNavigateUpFolder = () => {
@@ -1498,9 +1701,13 @@ export default function App() {
     setClipboard(null);
   };
 
-  // Drag and drop into folder
-  const handleDropIntoFolder = (draggedFileId: string, targetFolderId: string) => {
-    handleExecuteMoveCopy('move', targetFolderId, [draggedFileId]);
+  // Drag and drop into folder (supports single or multiple selected files at once)
+  const handleDropIntoFolder = (draggedFileIds: string | string[], targetFolderId: string | null) => {
+    const ids = Array.isArray(draggedFileIds) ? draggedFileIds : [draggedFileIds];
+    const validIds = ids.filter(id => Boolean(id) && id !== targetFolderId);
+    if (validIds.length === 0) return;
+    handleExecuteMoveCopy('move', targetFolderId, validIds);
+    setSelectedFileIds(new Set());
   };
 
   // Toggle selection
@@ -1835,11 +2042,25 @@ export default function App() {
     }
   };
 
-  // Update file from modal (Share / Encrypt)
+  // Update file from modal or FileDetailsPanel (Share / Encrypt / Sharable link)
   const handleUpdateFile = async (updated: StorageFile) => {
     await saveStoredFile(updated);
-    setFiles(prev => prev.map(f => f.id === updated.id ? updated : f));
-    showToast(lang === 'bn' ? 'ফাইল সেটিংস আপডেট হয়েছে।' : 'File settings updated.');
+    setFiles(prev => {
+      const newFiles = prev.map(f => f.id === updated.id ? updated : f);
+      if (currentUser) {
+        saveUserFilesCache(currentUser.id, newFiles, currentUser.emailOrPhone);
+      }
+      return newFiles;
+    });
+
+    // Immediately persist to Firestore so external users can access it without delay
+    try {
+      await saveFileToFirestore(updated, currentUser?.emailOrPhone, currentUser?.email);
+    } catch (err) {
+      console.warn('Firestore file update notice:', err);
+    }
+
+    showToast(lang === 'bn' ? 'ফাইল সেটিংস ও শেয়ার অপশন সফলভাবে সংরক্ষিত হয়েছে।' : 'File settings & share options saved successfully.');
   };
 
   // BATCH DOWNLOAD ALL AS ZIP ("সব একসাথে ডাউনলোড")
@@ -2177,6 +2398,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenUpload={handleOpenUpload}
+        onOpenQRScanner={() => setIsQRScannerOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         stats={stats}
@@ -2193,7 +2415,7 @@ export default function App() {
 
       {/* Body Layout: Sidebar + Main File Manager */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar with all 7 Utility Tools */}
+        {/* Sidebar with all Utility Tools */}
         <Sidebar
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -2211,6 +2433,7 @@ export default function App() {
           onOpenCalculator={() => { setIsCalculatorOpen(true); setIsMobileMenuOpen(false); }}
           onOpenScreenRecorder={() => { setIsScreenRecorderOpen(true); setIsMobileMenuOpen(false); }}
           onOpenVoiceRecorder={() => { setIsVoiceRecorderOpen(true); setIsMobileMenuOpen(false); }}
+          onOpenQRScanner={() => { setIsQRScannerOpen(true); setIsMobileMenuOpen(false); }}
           onOpenSubscription={() => { setIsSubscriptionOpen(true); setIsMobileMenuOpen(false); }}
           onOpenChat={() => { setIsChatOpen(true); setIsMobileMenuOpen(false); }}
         />
@@ -2296,6 +2519,13 @@ export default function App() {
             onOpenVoiceRecorder={() => setIsVoiceRecorderOpen(true)}
             onOpenMoveModal={() => handleOpenMoveModal()}
             onOpenCopyModal={() => handleOpenCopyModal()}
+            onRenameSelected={() => {
+              const id = Array.from(selectedFileIds)[0];
+              const f = files.find(x => x.id === id);
+              if (f) handleOpenRenameModal(f);
+            }}
+            onBatchRenameSelected={() => setIsBatchRenameOpen(true)}
+            onDropIntoFolder={handleDropIntoFolder}
             onBatchSetFolderLabel={handleBatchSetFolderLabel}
             onBatchToggleStar={handleBatchToggleStar}
             clipboard={clipboard}
@@ -2466,6 +2696,7 @@ export default function App() {
                 viewMode={viewMode}
                 selectedFileIds={selectedFileIds}
                 onToggleSelect={handleToggleSelect}
+                onToggleSelectAll={handleToggleSelectAll}
                 onPreview={handlePreviewFile}
                 onDownload={handleDownloadFile}
                 onShare={setShareFile}
@@ -2473,6 +2704,7 @@ export default function App() {
                 onToggleStar={handleToggleStar}
                 onViewDetails={(f) => { setInspectedFileId(f.id); setIsFileDetailsOpen(true); }}
                 onRestore={handleRestoreFile}
+                onRename={handleOpenRenameModal}
                 onOpenFolder={handleOpenFolder}
                 onQuickMove={handleOpenMoveModal}
                 onQuickCopy={handleOpenCopyModal}
@@ -2481,6 +2713,8 @@ export default function App() {
                 isTrash={activeTab === 'trash'}
                 lang={lang}
                 scrollContainerRef={mainScrollRef}
+                searchQuery={searchQuery}
+                onClearSearch={() => setSearchQuery('')}
               />
             )}
           </div>
@@ -2499,11 +2733,14 @@ export default function App() {
           onDelete={handleDeleteFile}
           onToggleStar={handleToggleStar}
           onMoveCopy={handleOpenMoveModal}
+          onRename={handleOpenRenameModal}
           onNavigateToFolder={(fId) => {
             setCurrentFolderId(fId);
             setActiveTab('all');
           }}
           onSetFolderColor={handleSetFolderColor}
+          onUpdateFile={handleUpdateFile}
+          onOpenExternalPreview={(f) => setExternalSharedFile(f)}
           isTrash={activeTab === 'trash'}
           lang={lang}
         />
@@ -2595,6 +2832,33 @@ export default function App() {
         lang={lang}
       />
 
+      <ExternalSharedViewModal
+        isOpen={Boolean(externalSharedFile)}
+        onClose={() => {
+          setExternalSharedFile(null);
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('share');
+            url.searchParams.delete('token');
+            url.searchParams.delete('readonly');
+            window.history.replaceState({}, '', url.pathname);
+          }
+        }}
+        file={externalSharedFile}
+        onDownload={handleDownloadFile}
+        onGoToDrive={() => {
+          setExternalSharedFile(null);
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('share');
+            url.searchParams.delete('token');
+            url.searchParams.delete('readonly');
+            window.history.replaceState({}, '', url.pathname);
+          }
+        }}
+        lang={lang}
+      />
+
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
@@ -2667,6 +2931,37 @@ export default function App() {
         lang={lang}
       />
 
+      {/* File & Folder Rename Modal */}
+      <RenameModal
+        isOpen={Boolean(renamingFile)}
+        onClose={() => setRenamingFile(null)}
+        file={renamingFile}
+        onRenameSubmit={handleExecuteRename}
+        lang={lang}
+      />
+
+      {/* Batch Rename Modal for multiple selected files */}
+      <BatchRenameModal
+        isOpen={isBatchRenameOpen}
+        onClose={() => setIsBatchRenameOpen(false)}
+        files={files.filter(f => selectedFileIds.has(f.id))}
+        onBatchRenameSubmit={handleExecuteBatchRename}
+        lang={lang}
+      />
+
+      {/* Browser Camera QR Code Scanner & Device Connect Modal */}
+      <QRScannerModal
+        isOpen={isQRScannerOpen}
+        onClose={() => setIsQRScannerOpen(false)}
+        currentUser={currentUser}
+        currentFolderId={currentFolderId}
+        onFileAdded={handleCreateFile}
+        onConnectAccount={handleConnectAccountFromQR}
+        onPreviewFile={handlePreviewFile}
+        showToast={showToast}
+        lang={lang}
+      />
+
       {/* Folder Right-Click Color Label & Context Menu */}
       {folderContextMenu && (
         <FolderContextMenu
@@ -2675,6 +2970,7 @@ export default function App() {
           onClose={() => setFolderContextMenu(null)}
           onSetColor={handleSetFolderColor}
           onOpenFolder={handleOpenFolder}
+          onRename={handleOpenRenameModal}
           onMoveCopy={handleOpenMoveModal}
           onToggleStar={handleToggleStar}
           onDelete={handleDeleteFile}

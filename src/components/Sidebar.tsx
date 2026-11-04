@@ -15,7 +15,8 @@ import {
   Bot,
   Youtube,
   Clock,
-  X
+  X,
+  Scan
 } from 'lucide-react';
 import { getTrialStatus, toBengaliDigits } from '../utils/bengaliNaming';
 import { BrandLogo } from './BrandLogo';
@@ -37,6 +38,7 @@ interface SidebarProps {
   onOpenCalculator?: () => void;
   onOpenScreenRecorder?: () => void;
   onOpenVoiceRecorder?: () => void;
+  onOpenQRScanner?: () => void;
   onOpenSubscription?: () => void;
   onOpenChat?: () => void;
 }
@@ -58,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCalculator,
   onOpenScreenRecorder,
   onOpenVoiceRecorder,
+  onOpenQRScanner,
   onOpenSubscription,
   onOpenChat
 }) => {
@@ -259,6 +262,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   {lang === 'bn' ? 'অডিও' : 'Audio'}
+                </span>
+              </button>
+            )}
+
+            {/* QR কোড স্ক্যানার ও ডিভাইস কানেক্ট (QR Scanner & Device Connect) */}
+            {onOpenQRScanner && (
+              <button
+                onClick={onOpenQRScanner}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800/70 hover:text-white transition cursor-pointer group"
+                title={lang === 'bn' ? 'ক্যামেরা কিউআর স্ক্যানার ও ডিভাইস কানেক্ট' : 'Camera QR Scanner & Device Connect'}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Scan className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition" />
+                  <span>{lang === 'bn' ? 'QR স্ক্যানার' : 'QR Scanner'}</span>
+                </div>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  {lang === 'bn' ? 'ক্যামেরা' : 'Camera'}
                 </span>
               </button>
             )}

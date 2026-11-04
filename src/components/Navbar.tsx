@@ -9,7 +9,8 @@ import {
   User, 
   LogOut, 
   RefreshCw,
-  Menu
+  Menu,
+  Scan
 } from 'lucide-react';
 
 import { BrandLogo } from './BrandLogo';
@@ -21,6 +22,7 @@ interface NavbarProps {
   onLogout: () => void;
   onOpenProfile: () => void;
   onOpenUpload: () => void;
+  onOpenQRScanner?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   stats: StorageStats;
@@ -39,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   onOpenProfile,
   onOpenUpload,
+  onOpenQRScanner,
   searchQuery,
   onSearchChange,
   stats,
@@ -59,14 +62,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   const siteBadge = siteSettings?.siteBadge || '1000GB';
 
   return (
-    <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-2.5">
-      <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
+    <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-2.5 sm:px-4 py-2 sm:py-2.5">
+      <div className="flex items-center justify-between gap-1.5 sm:gap-3 max-w-7xl mx-auto">
         {/* Brand & Logo */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           {onToggleMobileMenu && (
             <button
               onClick={onToggleMobileMenu}
-              className="p-2 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 md:hidden cursor-pointer"
+              className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white bg-slate-800/80 md:hidden cursor-pointer"
               title={lang === 'bn' ? 'মেনু ও ইউটিলিটি টুলস' : 'Menu & Tools'}
             >
               <Menu className="w-4 h-4" />
@@ -91,20 +94,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Search Bar */}
-        <div className="flex-1 max-w-md mx-2 sm:mx-4">
+        <div className="flex-1 min-w-[100px] max-w-md mx-1 sm:mx-4">
           <div className="relative">
-            <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => onSearchChange(e.target.value)}
-              placeholder={lang === 'bn' ? 'ফাইল খুঁজুন (নাম বা টাইপ দিয়ে)...' : 'Search files by name or type...'}
-              className="w-full bg-slate-950/70 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
+              placeholder={lang === 'bn' ? 'ফাইল খুঁজুন...' : 'Search files...'}
+              className="w-full bg-slate-950/70 border border-slate-700/80 rounded-xl pl-9 sm:pl-10 pr-4 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => onSearchChange('')}
-                className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-white"
+                className="absolute right-2.5 top-2 sm:top-2.5 text-xs text-slate-400 hover:text-white"
               >
                 ✕
               </button>
@@ -112,17 +115,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Action Controls & User:
-            Only Upload, Admin, Sync, EN, Profile (As requested by user:
-            "ফাইল সার্চ করে খুঁজে পাওয়ার ডানে অ্যানালিটিক্স, ক্যালকুলেটর স্ক্রিন রেকর্ড, ভয়েস রেকর্ড, ৩০ দিন বাকি ১০০৳ আজীবন, AI চ্যাট, Gojol Studio
-            এগুলো উপরে থাকবে না থাকবে শুধু বাম দিকের ইউটিলিটি টুলস এ থাকবে 
-            অ্যাডমিন থাকবে এবং সিঙ্ক, EN, প্রোফাইল থাকবে")
-        */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Action Controls & User */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* 1. Upload Button */}
           <button
             onClick={onOpenUpload}
-            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs sm:text-sm font-bold shadow-lg shadow-cyan-500/20 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 min-h-[38px] rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs sm:text-sm font-bold shadow-lg shadow-cyan-500/20 transition cursor-pointer"
           >
             <Upload className="w-4 h-4 shrink-0 stroke-[2.5]" />
             <span className="hidden sm:inline">
@@ -130,11 +128,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </button>
 
+          {/* QR Scanner & Device Connect Button */}
+          {onOpenQRScanner && (
+            <button
+              onClick={onOpenQRScanner}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 min-h-[38px] rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 hover:text-white border border-cyan-500/40 text-xs font-bold transition cursor-pointer shadow-sm"
+              title={lang === 'bn' ? 'ক্যামেরা কিউআর স্ক্যানার ও ডিভাইস কানেক্ট' : 'Camera QR Scanner & Device Connect'}
+            >
+              <Scan className="w-4 h-4 text-cyan-400 stroke-[2.5]" />
+              <span className="hidden lg:inline">{lang === 'bn' ? 'QR স্ক্যান' : 'QR Scan'}</span>
+            </button>
+          )}
+
           {/* 2. Admin Panel Button (অ্যাডমিন) */}
           {onOpenAdmin && (
             <button
               onClick={onOpenAdmin}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900/70 border border-rose-800/80 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-sm"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 min-h-[38px] rounded-xl bg-rose-950/70 hover:bg-rose-900/70 border border-rose-800/80 text-rose-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-sm"
               title={lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
             >
               <ShieldCheck className="w-4 h-4 text-rose-400" />
@@ -147,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onSyncFiles}
               disabled={isSyncingFiles}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer ${isSyncingFiles ? 'border-cyan-400 ring-1 ring-cyan-400/50' : ''}`}
+              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 min-h-[38px] rounded-xl bg-slate-800/80 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-cyan-500/30 transition disabled:opacity-50 cursor-pointer ${isSyncingFiles ? 'border-cyan-400 ring-1 ring-cyan-400/50' : ''}`}
               title={lang === 'bn' ? 'ক্লাউড সিঙ্ক (সব ডিভাইসের ফাইল সিঙ্ক করুন)' : 'Sync files with Cloud'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFiles ? 'animate-spin text-cyan-300' : 'text-cyan-400'}`} />
@@ -160,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* 4. Language Switcher (EN) */}
           <button
             onClick={onToggleLang}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 min-h-[38px] rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition cursor-pointer"
             title="Toggle Language"
           >
             <Languages className="w-4 h-4 text-cyan-400" />

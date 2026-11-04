@@ -24,12 +24,16 @@ import {
   Copy,
   MoreVertical,
   Info,
-  Palette
+  Palette,
+  Edit3,
+  Check
 } from 'lucide-react';
+import { formatTimeAgo } from '../utils/timeAgo';
 
 interface FileCardProps {
   file: StorageFile;
   isSelected: boolean;
+  selectedFileIds?: Set<string>;
   onToggleSelect: (id: string) => void;
   onPreview: (file: StorageFile) => void;
   onDownload: (file: StorageFile) => void;
@@ -38,10 +42,11 @@ interface FileCardProps {
   onToggleStar: (file: StorageFile) => void;
   onViewDetails?: (file: StorageFile) => void;
   onRestore?: (file: StorageFile) => void;
+  onRename?: (file: StorageFile) => void;
   onOpenFolder?: (folder: StorageFile) => void;
   onQuickMove?: (file: StorageFile) => void;
   onQuickCopy?: (file: StorageFile) => void;
-  onDropIntoFolder?: (draggedFileId: string, targetFolderId: string) => void;
+  onDropIntoFolder?: (draggedFileIds: string | string[], targetFolderId: string) => void;
   onFolderContextMenu?: (folder: StorageFile, e: React.MouseEvent) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
@@ -50,6 +55,7 @@ interface FileCardProps {
 export const FileCard: React.FC<FileCardProps> = ({
   file,
   isSelected,
+  selectedFileIds,
   onToggleSelect,
   onPreview,
   onDownload,
@@ -58,6 +64,7 @@ export const FileCard: React.FC<FileCardProps> = ({
   onToggleStar,
   onViewDetails,
   onRestore,
+  onRename,
   onOpenFolder,
   onQuickMove,
   onQuickCopy,
@@ -68,7 +75,8 @@ export const FileCard: React.FC<FileCardProps> = ({
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const isFolder = Boolean(file.isFolder);
-  const folderColor = isFolder ? getFolderColorStyle(file.colorLabel) : null;
+  const itemColor = getFolderColorStyle(file.colorLabel);
+  const folderColor = itemColor;
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return isFolder ? (lang === 'bn' ? 'ফোল্ডার' : 'Folder') : '0 B';
@@ -116,7 +124,26 @@ export const FileCard: React.FC<FileCardProps> = ({
 
   // Drag and drop handlers (Internal folder drop + HTML5 Desktop drag-out download)
   const handleDragStart = (e: React.DragEvent) => {
-    setupDesktopDragDownload(e, file);
+    // If the file being dragged is part of the current selection, drag ALL selected files!
+    const isPartOfMultiSelection = Boolean(selectedFileIds && selectedFileIds.has(file.id) && selectedFileIds.size > 1);
+    const idsToDrag = isPartOfMultiSelection
+      ? Array.from(selectedFileIds!)
+      : [file.id];
+
+    // 1. Pack JSON payload for batch internal move
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      action: 'move',
+      fileIds: idsToDrag,
+      count: idsToDrag.length
+    }));
+    // 2. Text plain fallback
+    e.dataTransfer.setData('text/plain', idsToDrag.join(','));
+    e.dataTransfer.effectAllowed = 'copyMove';
+
+    // 3. For desktop drag download (single file)
+    if (idsToDrag.length === 1 && !file.isFolder && !file.inTrash) {
+      setupDesktopDragDownload(e, file);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -136,9 +163,28 @@ export const FileCard: React.FC<FileCardProps> = ({
       e.preventDefault();
       e.stopPropagation();
       setIsDragOver(false);
-      const draggedId = e.dataTransfer.getData('text/plain');
-      if (draggedId && draggedId !== file.id && onDropIntoFolder) {
-        onDropIntoFolder(draggedId, file.id);
+
+      let draggedIds: string[] = [];
+      const jsonStr = e.dataTransfer.getData('application/json');
+      if (jsonStr) {
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (parsed && Array.isArray(parsed.fileIds)) {
+            draggedIds = parsed.fileIds;
+          }
+        } catch {}
+      }
+      if (draggedIds.length === 0) {
+        const textData = e.dataTransfer.getData('text/plain');
+        if (textData) {
+          draggedIds = textData.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+
+      // Filter out target folder itself from moving into itself
+      const validIds = draggedIds.filter(id => id !== file.id);
+      if (validIds.length > 0 && onDropIntoFolder) {
+        onDropIntoFolder(validIds, file.id);
       }
     }
   };
@@ -158,34 +204,45 @@ export const FileCard: React.FC<FileCardProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`group relative bg-slate-900/70 hover:bg-slate-800/90 border rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between ${
+      className={`group relative bg-slate-900/70 hover:bg-slate-800/90 border rounded-2xl p-3.5 sm:p-4 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-between ${
         isSelected
-          ? 'border-cyan-400 ring-1 ring-cyan-400 bg-slate-800/90'
+          ? 'border-cyan-400 ring-2 ring-cyan-400/80 bg-cyan-950/20'
           : isDragOver
-            ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-950/30 scale-105'
+            ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-950/40 scale-105'
             : isFolder
               ? folderColor
                 ? `${folderColor.borderClass} ${folderColor.bgLight} hover:border-cyan-400/60`
                 : 'border-amber-500/30 hover:border-amber-400/60 bg-slate-900/80'
-              : 'border-slate-800 hover:border-slate-700'
+              : itemColor
+                ? `${itemColor.borderClass} ${itemColor.bgLight} hover:border-cyan-400/60`
+                : 'border-slate-800 hover:border-slate-700'
       }`}
     >
       {/* Top Header: Select Checkbox, Badges, Star */}
       <div className="flex items-center justify-between gap-1 mb-3">
+        {/* Prominent Visible Checkbox */}
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleSelect(file.id); }}
-          className="p-1 text-slate-400 hover:text-white transition"
-          title={isSelected ? 'Deselect' : 'Select'}
+          className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all cursor-pointer shadow-sm ${
+            isSelected
+              ? 'bg-cyan-500 border-cyan-400 text-slate-950 shadow-cyan-500/30 ring-2 ring-cyan-400/40'
+              : 'border-slate-500 bg-slate-950/80 hover:border-cyan-400 hover:bg-slate-900 text-transparent'
+          }`}
+          title={isSelected ? (lang === 'bn' ? 'অনির্বাচন করুন' : 'Deselect') : (lang === 'bn' ? 'টিক দিয়ে নির্বাচন করুন' : 'Click to select')}
+          aria-label={isSelected ? 'Deselect' : 'Select'}
         >
-          {isSelected ? (
-            <CheckCircle2 className="w-5 h-5 text-cyan-400 fill-cyan-400/20" />
-          ) : (
-            <Circle className="w-5 h-5 text-slate-600 group-hover:text-slate-400" />
-          )}
+          <Check className={`w-4 h-4 stroke-[3] ${isSelected ? 'text-slate-950' : 'text-slate-600/30'}`} />
         </button>
 
         <div className="flex items-center gap-1.5">
+          {itemColor && !isFolder && (
+            <span
+              className="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/20 animate-pulse"
+              style={{ backgroundColor: itemColor.hex }}
+              title={`${lang === 'bn' ? 'কালার লেবেল' : 'Color'}: ${lang === 'bn' ? itemColor.nameBn : itemColor.nameEn}`}
+            />
+          )}
           {isFolder && (
             <div className="flex items-center gap-1.5">
               {folderColor && (
@@ -269,23 +326,45 @@ export const FileCard: React.FC<FileCardProps> = ({
         <h4 className="mt-3 text-xs font-bold text-slate-100 text-center truncate max-w-[170px]" title={file.name}>
           {file.name}
         </h4>
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 font-medium">
-          <span>{formatBytes(file.size)}</span>
-          <span aria-hidden="true" className="text-slate-600">·</span>
-          <span>{new Date(file.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-        </div>
+        {isTrash ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-red-300 mt-1.5 font-medium bg-red-950/60 px-2 py-0.5 rounded-md border border-red-800/50">
+            <Trash2 className="w-3 h-3 text-red-400 shrink-0" />
+            <span>
+              {lang === 'bn' ? 'ডিলিট: ' : 'Deleted: '}
+              {formatTimeAgo(file.deletedAt || file.uploadedAt, lang)}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 font-medium">
+            <span>{formatBytes(file.size)}</span>
+            <span aria-hidden="true" className="text-slate-600">·</span>
+            <span>{new Date(file.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+          </div>
+        )}
       </div>
 
       {/* Footer: Quick Actions */}
-      <div className="pt-2.5 border-t border-slate-800/70 flex items-center justify-between text-xs text-slate-400">
-        <span className="text-[10px] text-slate-500 font-mono uppercase">
+      <div className="pt-2.5 border-t border-slate-800/70 flex items-center justify-between gap-1 text-xs text-slate-400">
+        <span className="text-[10px] text-slate-500 font-mono uppercase shrink-0">
           {isFolder ? 'Folder' : file.category}
         </span>
 
         {/* Action icons */}
-        <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition">
+        <div className="flex items-center gap-0.5 sm:gap-1 opacity-90 group-hover:opacity-100 transition flex-wrap justify-end">
           {!isTrash ? (
             <>
+              {/* Rename Quick Action */}
+              {onRename && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onRename(file); }}
+                  className="p-1.5 hover:text-cyan-400 rounded-lg hover:bg-slate-800 transition"
+                  title={lang === 'bn' ? 'নাম পরিবর্তন' : 'Rename'}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {/* Move Quick Action */}
               {onQuickMove && (
                 <button

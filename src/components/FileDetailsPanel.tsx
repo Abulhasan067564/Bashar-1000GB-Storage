@@ -30,8 +30,15 @@ import {
   Sparkles,
   ChevronRight,
   Maximize2,
-  Palette
+  Palette,
+  Edit3,
+  Link as LinkIcon,
+  Globe,
+  QrCode,
+  ExternalLink,
+  Timer
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import { toBengaliDigits } from '../utils/bengaliNaming';
 
 interface FileDetailsPanelProps {
@@ -46,8 +53,11 @@ interface FileDetailsPanelProps {
   onDelete: (file: StorageFile) => void;
   onToggleStar: (file: StorageFile) => void;
   onMoveCopy?: (file: StorageFile) => void;
+  onRename?: (file: StorageFile) => void;
   onNavigateToFolder?: (folderId: string | null) => void;
   onSetFolderColor?: (folderId: string, colorId: string | undefined) => void;
+  onUpdateFile?: (updatedFile: StorageFile) => void;
+  onOpenExternalPreview?: (file: StorageFile) => void;
   isTrash?: boolean;
   lang: 'bn' | 'en';
 }
@@ -64,12 +74,123 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
   onDelete,
   onToggleStar,
   onMoveCopy,
+  onRename,
   onNavigateToFolder,
   onSetFolderColor,
+  onUpdateFile,
+  onOpenExternalPreview,
   isTrash = false,
   lang
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [selectedExpiryHours, setSelectedExpiryHours] = useState<number>(24);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedFirebaseUrl, setCopiedFirebaseUrl] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+
+  const isFileShared = Boolean(selectedFile?.shared?.isShared);
+  const shareExpiresAt = selectedFile?.shared?.expiresAt;
+  const isLinkExpired = shareExpiresAt ? new Date(shareExpiresAt).getTime() < Date.now() : false;
+
+  const currentShareToken = selectedFile?.shared?.shareToken || selectedFile?.shared?.shareId || (selectedFile ? `share_${selectedFile.id.substring(0, 8)}` : '');
+  const sharableLinkUrl = typeof window !== 'undefined' && selectedFile
+    ? `${window.location.origin}?share=${selectedFile.id}&token=${currentShareToken}&readonly=true`
+    : '';
+
+  const firestoreDirectUrl = selectedFile 
+    ? `https://firestore.googleapis.com/v1/projects/gen-lang-client-0084914471/databases/ai-studio-bashar1000gbclou-ec4191b2-db2e-4f6f-bae3-f7c5fd5dd992/documents/files/${selectedFile.id}`
+    : '';
+
+  React.useEffect(() => {
+    if (isFileShared && sharableLinkUrl) {
+      QRCode.toDataURL(sharableLinkUrl, {
+        width: 180,
+        margin: 1,
+        color: { dark: '#020617', light: '#ffffff' }
+      }).then(setQrDataUrl).catch(() => {});
+    } else {
+      setQrDataUrl('');
+    }
+  }, [isFileShared, sharableLinkUrl]);
+
+  const getRemainingTimeString = (expiryIso?: string) => {
+    if (!expiryIso) return lang === 'bn' ? 'স্থায়ী মেয়াদ (No Expiration)' : 'Permanent';
+    const diff = new Date(expiryIso).getTime() - Date.now();
+    if (diff <= 0) return lang === 'bn' ? 'মেয়াদ শেষ (Expired)' : 'Expired';
+    const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (d > 0) {
+      return lang === 'bn' ? `${toBengaliDigits(d)} দিন ${toBengaliDigits(h)} ঘণ্টা বাকি` : `${d}d ${h}h remaining`;
+    }
+    return lang === 'bn' ? `${toBengaliDigits(h)} ঘণ্টা ${toBengaliDigits(m)} মিনিট বাকি` : `${h}h ${m}m remaining`;
+  };
+
+  const handleGenerateSharableLink = (hours: number = selectedExpiryHours) => {
+    if (!selectedFile) return;
+    setIsGeneratingLink(true);
+
+    const token = `bshr_temp_${selectedFile.id.substring(0, 6)}_${Math.random().toString(36).substring(2, 8)}`;
+    const expiresAt = new Date(Date.now() + hours * 3600000).toISOString();
+    const linkUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}?share=${selectedFile.id}&token=${token}&readonly=true`
+      : '';
+
+    const updatedFile: StorageFile = {
+      ...selectedFile,
+      updatedAt: new Date().toISOString(),
+      shared: {
+        ...(selectedFile.shared || {}),
+        isShared: true,
+        shareId: selectedFile.id,
+        shareToken: token,
+        expiresAt: expiresAt,
+        isReadOnly: true,
+        allowDownload: true,
+        sharableLink: linkUrl,
+        createdAt: new Date().toISOString()
+      }
+    };
+
+    onUpdateFile?.(updatedFile);
+    setIsGeneratingLink(false);
+
+    navigator.clipboard.writeText(linkUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleRevokeSharableLink = () => {
+    if (!selectedFile) return;
+    const updatedFile: StorageFile = {
+      ...selectedFile,
+      updatedAt: new Date().toISOString(),
+      shared: {
+        ...(selectedFile.shared || {}),
+        isShared: false,
+        shareToken: undefined,
+        expiresAt: undefined,
+        sharableLink: undefined
+      }
+    };
+    onUpdateFile?.(updatedFile);
+  };
+
+  const handleCopyLink = () => {
+    if (!sharableLinkUrl) return;
+    navigator.clipboard.writeText(sharableLinkUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleCopyFirebaseUrl = () => {
+    if (!firestoreDirectUrl) return;
+    navigator.clipboard.writeText(firestoreDirectUrl);
+    setCopiedFirebaseUrl(true);
+    setTimeout(() => setCopiedFirebaseUrl(false), 2500);
+  };
 
   if (!isOpen) return null;
 
@@ -227,11 +348,21 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
     ? '< 0.0001%'
     : percentageOf1000Gb.toFixed(4) + '%';
 
+  if (!isOpen) return null;
+
   return (
-    <aside 
-      aria-label="File Metadata & Details Panel"
-      className="w-full md:w-80 lg:w-96 bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 flex flex-col h-full shrink-0 z-30 transition-all duration-300 shadow-2xl overflow-hidden"
-    >
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      <div 
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm md:hidden animate-in fade-in"
+        aria-hidden="true"
+      />
+
+      <aside 
+        aria-label="File Metadata & Details Panel"
+        className="fixed inset-y-0 right-0 z-50 w-full sm:w-96 max-w-[92vw] md:static md:w-80 lg:w-96 md:max-w-none bg-slate-900/98 md:bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 flex flex-col h-full shrink-0 transition-all duration-300 shadow-2xl overflow-hidden animate-in slide-in-from-right duration-200"
+      >
       {/* Panel Header */}
       <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 shrink-0">
         <div className="flex items-center gap-2.5">
@@ -363,6 +494,17 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
                   <span className="text-[9px] font-medium">{lang === 'bn' ? 'স্টার' : 'Star'}</span>
                 </button>
 
+                {!isTrash && onRename && (
+                  <button
+                    onClick={() => onRename(selectedFile)}
+                    className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 hover:border-cyan-500/40 transition cursor-pointer flex flex-col items-center gap-1 flex-1"
+                    title={lang === 'bn' ? 'নাম পরিবর্তন' : 'Rename'}
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span className="text-[9px] font-medium">{lang === 'bn' ? 'রিনেম' : 'Rename'}</span>
+                  </button>
+                )}
+
                 {!isTrash && onMoveCopy && (
                   <button
                     onClick={() => onMoveCopy(selectedFile)}
@@ -383,7 +525,233 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
                   <span className="text-[9px] font-medium">{lang === 'bn' ? 'ডিলিট' : 'Delete'}</span>
                 </button>
               </div>
+
+              {/* Generate Sharable Link Callout Button */}
+              {!selectedFile.isFolder && (
+                <button
+                  onClick={() => handleGenerateSharableLink()}
+                  disabled={isGeneratingLink}
+                  className="mt-3 w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/25 cursor-pointer disabled:opacity-50"
+                  title={lang === 'bn' ? 'ফায়ারবেস অস্থায়ী রিড-অনলি লিংক তৈরি করুন' : 'Generate temporary read-only sharable link'}
+                >
+                  <LinkIcon className="w-4 h-4 stroke-[2.5]" />
+                  <span>
+                    {isGeneratingLink 
+                      ? (lang === 'bn' ? 'লিংক তৈরি হচ্ছে...' : 'Generating Link...') 
+                      : (isFileShared && !isLinkExpired 
+                          ? (lang === 'bn' ? 'শেয়ারেবল লিংক রিফ্রেশ করুন' : 'Refresh Sharable Link') 
+                          : (lang === 'bn' ? 'Generate Sharable Link' : 'Generate Sharable Link'))}
+                  </span>
+                </button>
+              )}
             </div>
+
+            {/* Dedicated Section: Firebase Sharable Link Panel */}
+            {!selectedFile.isFolder && (
+              <div className="bg-slate-950/70 border border-cyan-500/30 rounded-2xl p-4 space-y-3.5 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                    {lang === 'bn' ? 'অস্থায়ী শেয়ারেবল লিংক (Firebase Link)' : 'Temporary Sharable Link'}
+                  </span>
+                  
+                  {isFileShared && !isLinkExpired ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {lang === 'bn' ? 'সক্রিয়' : 'Active'}
+                    </span>
+                  ) : isLinkExpired ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1">
+                      {lang === 'bn' ? 'মেয়াদোত্তীর্ণ' : 'Expired'}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                      {lang === 'bn' ? 'নিষ্ক্রিয়' : 'Inactive'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description */}
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  {lang === 'bn'
+                    ? 'ফায়ারবেস ক্লাউডের মাধ্যমে একটি অস্থায়ী ও রিড-অনলি এক্সেস লিংক তৈরি করুন। বহিরাগত ব্যবহারকারী কোনো লগইন ছাড়াই ফাইল দেখতে ও ডাউনলোড করতে পারবে।'
+                    : 'Create a temporary read-only access link via Firebase. External users can view and download without altering your files.'}
+                </p>
+
+                {/* Expiry Options Picker */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                    <Timer className="w-3 h-3 text-cyan-400" />
+                    <span>{lang === 'bn' ? 'লিংকের মেয়াদ নির্ধারণ করুন:' : 'Set Expiration Duration:'}</span>
+                  </label>
+                  <div className="grid grid-cols-4 gap-1 text-[10px]">
+                    {[
+                      { hours: 24, labelBn: '২৪ ঘণ্টা', labelEn: '24h' },
+                      { hours: 72, labelBn: '৩ দিন', labelEn: '3 Days' },
+                      { hours: 168, labelBn: '৭ দিন', labelEn: '7 Days' },
+                      { hours: 720, labelBn: '৩০ দিন', labelEn: '30 Days' }
+                    ].map(opt => (
+                      <button
+                        key={opt.hours}
+                        type="button"
+                        onClick={() => {
+                          setSelectedExpiryHours(opt.hours);
+                          if (isFileShared) {
+                            handleGenerateSharableLink(opt.hours);
+                          }
+                        }}
+                        className={`py-1.5 px-1 rounded-lg border text-center transition cursor-pointer font-medium ${
+                          selectedExpiryHours === opt.hours
+                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-850'
+                        }`}
+                      >
+                        {lang === 'bn' ? opt.labelBn : opt.labelEn}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Generate Button if not yet shared */}
+                {(!isFileShared || isLinkExpired) ? (
+                  <button
+                    onClick={() => handleGenerateSharableLink()}
+                    disabled={isGeneratingLink}
+                    className="w-full py-2.5 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer disabled:opacity-50"
+                  >
+                    <LinkIcon className="w-4 h-4 stroke-[2.5]" />
+                    <span>{lang === 'bn' ? 'Generate Sharable Link (লিংক তৈরি করুন)' : 'Generate Sharable Link'}</span>
+                  </button>
+                ) : (
+                  /* Active Link Details */
+                  <div className="space-y-3 pt-1">
+                    {/* Shareable Link Box */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400 font-medium flex items-center gap-1">
+                          <LinkIcon className="w-3 h-3 text-cyan-400" />
+                          {lang === 'bn' ? 'অস্থায়ী রিড-অনলি লিংক:' : 'Sharable Link (Read-Only):'}
+                        </span>
+                        <span className="text-amber-400 font-mono text-[10px] flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          {getRemainingTimeString(shareExpiresAt)}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          readOnly
+                          value={sharableLinkUrl}
+                          onFocus={e => e.target.select()}
+                          className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-[11px] font-mono text-cyan-300 select-all focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopyLink}
+                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-[11px] flex items-center gap-1 transition cursor-pointer shrink-0"
+                          title="Copy Link"
+                        >
+                          {copiedLink ? <Check className="w-3.5 h-3.5 text-slate-950 stroke-[3]" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedLink ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied!') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Firebase Firestore Direct Document Reference */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <HardDrive className="w-3 h-3 text-blue-400" />
+                          {lang === 'bn' ? 'ফায়ারবেস ক্লাউড ডকুমেন্ট রেফারেন্স:' : 'Firebase Firestore Document URL:'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyFirebaseUrl}
+                          className="text-cyan-400 hover:text-cyan-300 text-[10px] flex items-center gap-0.5 cursor-pointer"
+                        >
+                          {copiedFirebaseUrl ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedFirebaseUrl ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied') : (lang === 'bn' ? 'URL কপি' : 'Copy URL')}</span>
+                        </button>
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] font-mono text-slate-400 truncate select-all">
+                        {firestoreDirectUrl}
+                      </div>
+                    </div>
+
+                    {/* Read-Only Safety Notice */}
+                    <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/20 flex items-start gap-2 text-[10px] text-cyan-200/90">
+                      <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-cyan-300">
+                          {lang === 'bn' ? 'রিড-অনলি নিরাপত্তা সুরক্ষায় সক্রিয়' : 'Read-Only Security Enforced'}
+                        </p>
+                        <p className="text-slate-400 mt-0.5 text-[10px]">
+                          {lang === 'bn'
+                            ? 'লিংকটি পাওয়া যে কেউ ফাইলটি দেখতে ও ডাউনলোড করতে পারবে, কিন্তু কোনো ফাইল পরিবর্তন বা ডিলিট করতে পারবে না।'
+                            : 'Anyone with this link can view and download the file. No editing or deletion privileges are granted.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons: Test View, QR Code, Revoke */}
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onOpenExternalPreview) {
+                            onOpenExternalPreview(selectedFile);
+                          } else {
+                            window.open(sharableLinkUrl, '_blank');
+                          }
+                        }}
+                        className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-700/80 rounded-xl text-[10px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        title={lang === 'bn' ? 'বহিরাগত প্রিভিউ টেস্ট করুন' : 'Test external preview'}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>{lang === 'bn' ? 'টেস্ট ভিউ' : 'Test View'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQr(prev => !prev)}
+                        className={`py-1.5 px-2.5 rounded-xl text-[10px] font-semibold border flex items-center gap-1 transition cursor-pointer ${
+                          showQr 
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400' 
+                            : 'bg-slate-900 text-slate-300 border-slate-700/80 hover:bg-slate-800'
+                        }`}
+                        title="QR Code"
+                      >
+                        <QrCode className="w-3 h-3" />
+                        <span>{lang === 'bn' ? 'কিউআর' : 'QR'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRevokeSharableLink}
+                        className="py-1.5 px-2.5 bg-slate-900 hover:bg-red-950/40 text-red-400 hover:text-red-300 border border-slate-700/80 hover:border-red-500/40 rounded-xl text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                        title={lang === 'bn' ? 'লিংক বাতিল করুন' : 'Revoke link'}
+                      >
+                        <X className="w-3 h-3" />
+                        <span>{lang === 'bn' ? 'বাতিল' : 'Revoke'}</span>
+                      </button>
+                    </div>
+
+                    {/* QR Code expansion */}
+                    {showQr && qrDataUrl && (
+                      <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 animate-in fade-in">
+                        <div className="p-2 bg-white rounded-xl shadow-md">
+                          <img src={qrDataUrl} alt="Sharable QR Code" className="w-28 h-28 rounded-md" />
+                        </div>
+                        <p className="text-[10px] text-slate-400 text-center">
+                          {lang === 'bn' ? 'যেকোনো মোবাইল ক্যামেরা দিয়ে স্ক্যান করে সরাসরি ফাইলটি দেখুন' : 'Scan with mobile camera to access file directly'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Folder Color Label Selection */}
             {selectedFile.isFolder && (
@@ -598,6 +966,21 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
                   </p>
                 </div>
 
+                {(selectedFile.inTrash || selectedFile.deletedAt) && (
+                  <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800/60 space-y-1">
+                    <span className="text-[10px] text-red-400 font-bold flex items-center gap-1">
+                      <Trash2 className="w-3 h-3 text-red-400" />
+                      {lang === 'bn' ? 'রিসাইকেল বিনে পাঠানোর সময় (Deleted Date):' : 'Moved to Recycle Bin At:'}
+                    </span>
+                    <p className="font-semibold text-red-200 text-xs">
+                      {formatDate(selectedFile.deletedAt || selectedFile.updatedAt)}
+                    </p>
+                    <p className="text-[10px] text-red-400 font-medium">
+                      {getRelativeTime(selectedFile.deletedAt || selectedFile.updatedAt)}
+                    </p>
+                  </div>
+                )}
+
                 {selectedFile.updatedAt && selectedFile.updatedAt !== selectedFile.uploadedAt && (
                   <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
                     <span className="text-[10px] text-slate-400 flex items-center gap-1">
@@ -710,5 +1093,6 @@ export const FileDetailsPanel: React.FC<FileDetailsPanelProps> = ({
         )}
       </div>
     </aside>
+    </>
   );
 };

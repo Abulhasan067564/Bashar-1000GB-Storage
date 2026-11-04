@@ -9,6 +9,39 @@
   }
 }
 
+/* Modal Subtle Zoom In Animation for high user engagement */
+@keyframes modalZoomIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  60% {
+    opacity: 0.95;
+    transform: scale(1.01) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modalBackdropFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.modal-zoom-in {
+  animation: modalZoomIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal-backdrop-fade {
+  animation: modalBackdropFade 0.22s ease-out forwards;
+}
+
 /* Custom sleek scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -23,4 +56,13 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(14, 165, 233, 0.8);
+}
+
+/* Hide scrollbar utility for smooth touch swipe bars on mobile */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

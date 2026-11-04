@@ -17,12 +17,16 @@ export interface StorageFile {
   shared?: {
     isShared: boolean;
     shareId?: string;
+    shareToken?: string;
     requiresPassword?: boolean;
     passwordHash?: string;
     expiresAt?: string;
     views?: number;
     downloads?: number;
     allowDownload?: boolean;
+    isReadOnly?: boolean;
+    sharableLink?: string;
+    createdAt?: string;
   };
   tags?: string[];
   ownerId: string;

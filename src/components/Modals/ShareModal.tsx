@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { StorageFile } from '../../types/storage';
-import { Share2, Link as LinkIcon, Lock, Calendar, Copy, Check, QrCode, X, Globe, Shield } from 'lucide-react';
+import { Share2, Link as LinkIcon, Lock, Calendar, Copy, Check, QrCode, X, Globe, Shield, Download } from 'lucide-react';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [password, setPassword] = useState(currentShared.passwordHash || "");
   const [expiryDays, setExpiryDays] = useState("7");
   const [copied, setCopied] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
   useEffect(() => {
     if (file) {
@@ -33,8 +35,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       setRequirePassword(Boolean(file.shared?.requiresPassword));
       setPassword(file.shared?.passwordHash || "");
       setCopied(false);
+
+      if (shareUrl) {
+        QRCode.toDataURL(shareUrl, {
+          width: 200,
+          margin: 1,
+          color: { dark: '#030712', light: '#ffffff' }
+        }).then(setQrCodeDataUrl).catch(() => {});
+      }
     }
-  }, [file, isOpen]);
+  }, [file, isOpen, shareUrl]);
 
   if (!isOpen || !file) return null;
 
@@ -186,18 +196,32 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </select>
             </div>
 
-            {/* QR Code view */}
-            <div className="text-center p-3 bg-slate-950/40 border border-slate-800/60 rounded-xl flex items-center justify-around">
-              <div className="text-left">
-                <p className="text-xs font-semibold text-slate-300">
-                  {lang === 'bn' ? 'মোবাইলে স্ক্যান করে ফাইল পান' : 'Instant Mobile QR Access'}
+            {/* Real QR Code view */}
+            <div className="p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-xl flex items-center justify-between gap-3">
+              <div className="text-left space-y-1">
+                <p className="text-xs font-bold text-slate-200">
+                  {lang === 'bn' ? 'ক্যামেরা দিয়ে স্ক্যান করে ফাইল নিন' : 'Scan with Camera to Get File'}
                 </p>
-                <p className="text-[11px] text-slate-500">
-                  {lang === 'bn' ? 'সরাসরি যেকোনো ডিভাইসে ফাইল ডাউনলোড করতে পারবেন' : 'Scan with mobile camera to view'}
+                <p className="text-[11px] text-slate-400">
+                  {lang === 'bn' ? 'যেকোনো মোবাইল ক্যামেরা বা কিউআর স্ক্যানার দিয়ে স্ক্যান করুন' : 'Scan with any mobile camera or QR scanner'}
                 </p>
+                {qrCodeDataUrl && (
+                  <a
+                    href={qrCodeDataUrl}
+                    download={`QR_${file.name}.png`}
+                    className="inline-flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold pt-1"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>{lang === 'bn' ? 'QR ইমেজ ডাউনলোড' : 'Download QR'}</span>
+                  </a>
+                )}
               </div>
-              <div className="p-2 bg-white rounded-lg shadow">
-                <QrCode className="w-12 h-12 text-slate-950" />
+              <div className="p-1.5 bg-white rounded-xl shadow-md shrink-0">
+                {qrCodeDataUrl ? (
+                  <img src={qrCodeDataUrl} alt="File QR Code" className="w-16 h-16 rounded-md" />
+                ) : (
+                  <QrCode className="w-16 h-16 text-slate-950" />
+                )}
               </div>
             </div>
           </div>

@@ -54,8 +54,8 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 modal-backdrop-fade">
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 modal-zoom-in transition-transform">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/40">
           <div className="flex items-center gap-3 truncate pr-4">
@@ -147,11 +147,11 @@ export const PreviewModal: React.FC<PreviewModalProps> = ({
               )}
             </div>
           ) : file.category === 'image' && file.dataUrl ? (
-            <div className="max-w-full max-h-[60vh] flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-black/40">
+            <div className="max-w-full max-h-[60vh] flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 bg-black/40 group">
               <img
                 src={file.dataUrl}
                 alt={file.name}
-                className="max-h-[55vh] object-contain rounded-lg"
+                className="max-h-[55vh] object-contain rounded-lg transition-transform duration-300 ease-out group-hover:scale-[1.02]"
               />
             </div>
           ) : file.category === 'video' && file.dataUrl ? (

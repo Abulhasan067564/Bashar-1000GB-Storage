@@ -851,4 +851,56 @@ export async function deletePaymentRequestFromFirestore(requestId: string): Prom
   }
 }
 
+// Fetch a shared file from Firestore by shareId, shareToken, or direct file id with automatic chunk assembly
+export async function getSharedFileFromFirestore(identifier: string): Promise<StorageFile | null> {
+  if (!identifier) return null;
+  const cleanId = identifier.trim();
+  try {
+    let file: StorageFile | null = null;
+
+    // 1. Direct ID lookup
+    const directDoc = await getDoc(doc(db, 'files', cleanId));
+    if (directDoc.exists()) {
+      file = directDoc.data() as StorageFile;
+    }
+
+    // 2. Query by shared.shareId
+    if (!file) {
+      const q = query(collection(db, 'files'), where('shared.shareId', '==', cleanId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        file = snap.docs[0].data() as StorageFile;
+      }
+    }
+
+    // 3. Query by shared.shareToken
+    if (!file) {
+      const qToken = query(collection(db, 'files'), where('shared.shareToken', '==', cleanId));
+      const snapToken = await getDocs(qToken);
+      if (!snapToken.empty) {
+        file = snapToken.docs[0].data() as StorageFile;
+      }
+    }
+
+    if (file) {
+      // Reassemble chunked file content if dataUrl is not directly embedded
+      const anyFile = file as any;
+      if (!file.dataUrl && anyFile.hasChunks && anyFile.totalChunks) {
+        const assembled = await loadFileChunksFromFirestore(file.id, anyFile.totalChunks);
+        if (assembled) {
+          file.dataUrl = assembled;
+        }
+      }
+      return file;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Error fetching shared file from Firestore:', err);
+    return null;
+  }
+}
+
+// Alias for QR scanner compatibility
+export const getFileByIdOrShareId = getSharedFileFromFirestore;
+
 
